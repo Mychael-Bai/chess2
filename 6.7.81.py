@@ -975,8 +975,8 @@ class ChineseChess:
         river_y = self.board_margin + 4.5 * self.cell_size
         self.canvas.create_text(
             self.canvas_width / 2, river_y,
-            text="楚    河           漢    界",
-            font=('KaiTi', 22)
+            text="楚   河        漢   界",
+            font=('KaiTi', 23)
         )
         
         # Draw pieces on intersections
