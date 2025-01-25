@@ -4,7 +4,6 @@ import os
 import pygame.mixer
 
 import numpy as np
-import random
 
 class ChineseChess:
 
