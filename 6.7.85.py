@@ -2,10 +2,6 @@ import tkinter as tk
 import os
 import pygame.mixer
 
-import numpy as np
-
-
-
 class ChineseChess:
 
     def __init__(self):
