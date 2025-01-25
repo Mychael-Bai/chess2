@@ -3,7 +3,6 @@ from tkinter import messagebox
 import os
 import pygame.mixer
 
-import numpy as np
 
 class ChineseChess:
 
