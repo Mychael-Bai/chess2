@@ -33,7 +33,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.7.85(test one more time)")
+        self.window.title("Chinese Chess 6.7.85(no switch feature)")
         
         self.game_history = []  # List to store all games
         
