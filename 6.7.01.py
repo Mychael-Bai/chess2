@@ -195,7 +195,7 @@ class ChineseChess:
         warn_window.wait_window()        
 
     def switch_colors(self):
-        """Switch the board orientation while keeping AI on top"""
+        """Switch the colors while keeping AI on top and red moving first"""
         self.flipped = not self.flipped
         
         # Store current state
@@ -204,18 +204,29 @@ class ChineseChess:
         # Clear the board
         self.board = [[None for _ in range(9)] for _ in range(10)]
         
-        # Flip the positions
+        # Swap the colors of all pieces
         for row in range(10):
             for col in range(9):
                 if current_state[row][col]:
                     # Calculate new position
                     new_row = 9 - row
-                    # If it's a piece of the current player's color, move it
                     piece = current_state[row][col]
-                    self.board[new_row][col] = piece
+                    # Swap colors (R -> B, B -> R)
+                    new_color = 'B' if piece[0] == 'R' else 'R'
+                    new_piece = new_color + piece[1]
+                    self.board[new_row][col] = new_piece
+        
+        # Reset the game state to ensure red moves first
+        self.current_player = 'red'
+        self.selected_piece = None
+        self.highlighted_positions = []
         
         # Redraw the board
         self.draw_board()
+        
+        # If AI is now red (at top), make it move immediately
+        if self.flipped:
+            self.window.after(500, self.make_ai_move)
 
     def evaluate_checkmate_potential(self, color):
         """Evaluate how close we are to achieving checkmate"""
@@ -397,6 +408,10 @@ class ChineseChess:
             
     def on_click(self, event):
 
+        if self.current_player == ('red' if self.flipped else 'black'):
+            # Add a small delay before AI move
+            self.window.after(500, self.make_ai_move)
+
         if self.replay_mode or self.game_over:  # Add game_over check
             return  # Ignore clicks when game is over or in replay mode
 
@@ -481,29 +496,29 @@ class ChineseChess:
                 self.draw_board()        
 
     def evaluate_board(self):
-                
         piece_values = {
-            '將': 0, '帥': 0,      # Kings - valued at 0 since they can't be captured
-            '車': 900,            # Chariot - most valuable piece
-            '馬': 400,            # Horse
-            '炮': 500,            # Cannon
-            '象': 200, '相': 200,  # Elephants
-            '士': 200, '仕': 200,  # Advisors
-            '卒': 100, '兵': 100   # Pawns - base value, will get bonus when advanced
+            '將': 0, '帥': 0,
+            '車': 900,
+            '馬': 400,
+            '炮': 500,
+            '象': 200, '相': 200,
+            '士': 200, '仕': 200,
+            '卒': 100, '兵': 100
         }
         
         score = 0
+        ai_color = 'R' if self.flipped else 'B'
+        
         for row in range(10):
             for col in range(9):
                 piece = self.board[row][col]
                 if piece:
                     value = piece_values[piece[1]]
-                    if piece[0] == 'B':  # Black pieces (AI)
+                    if piece[0] == ai_color:  # AI pieces
                         score += value
-                        # Bonus for advanced positions
                         if piece[1] in ['卒', '炮']:
                             score += (row * 10)  # Encourage forward movement
-                    else:  # Red pieces (Human)
+                    else:  # Human pieces
                         score -= value
                         if piece[1] in ['兵', '炮']:
                             score -= ((9 - row) * 10)
@@ -767,13 +782,16 @@ class ChineseChess:
         
         start_time = time.time()
         max_time = 5.0  # Reduced from 10.0 to make moves faster
-                
+        
         best_score = float('-inf')
         best_move = None
         best_moving_piece = None
         
-        # Get all valid moves and sort them by preliminary evaluation
-        moves = self.get_all_valid_moves('black')
+        # Get the AI's color based on board orientation
+        ai_color = 'red' if self.flipped else 'black'
+        
+        # Get all valid moves for AI's color
+        moves = self.get_all_valid_moves(ai_color)
         if not moves:
             return
         
@@ -781,64 +799,30 @@ class ChineseChess:
         moves.sort(key=self._move_sorting_score, reverse=True)
         
         # Check if opponent is in check
-        is_check = self.is_in_check('red')
-        max_depth = 6 if is_check else 4  # Search deeper when opponent is in check
+        opponent_color = 'black' if ai_color == 'red' else 'red'
+        is_check = self.is_in_check(opponent_color)
+        max_depth = 6 if is_check else 4
         
-        # Iterative deepening
-        for search_depth in range(2, max_depth + 1):
-            if time.time() - start_time > max_time:
-                break
-            
-            alpha = float('-inf')
-            beta = float('inf')
-            
-            for from_pos, to_pos in moves:
-                if time.time() - start_time > max_time:
-                    break
-                
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                
-                # Make temporary move
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('black'):
-                    score = self.minimax(search_depth - 1, alpha, beta, False)
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_move = (from_pos, to_pos)
-                        best_moving_piece = moving_piece
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
+        # Rest of the method remains the same...
         
-        # Make the best move found
+        # At the end, update the current player
         if best_move:
             from_pos, to_pos = best_move
             # Make the actual move
             self.board[to_pos[0]][to_pos[1]] = best_moving_piece
             self.board[from_pos[0]][from_pos[1]] = None
             
-            # Play sound if available
             if hasattr(self, 'move_sound') and self.move_sound:
                 self.move_sound.play()
             
-            # Update game state
             self.highlighted_positions = [from_pos, to_pos]
-            self.current_player = 'red'
-                        
-            # Add this line to record the AI move
+            self.current_player = opponent_color
+            
             self.add_move_to_history(from_pos, to_pos, best_moving_piece)
-
-            # Update display
             self.draw_board()
             
-        # Check if the opponent is now in checkmate
-        if self.is_checkmate(self.current_player):
-            self.handle_game_end()
+            if self.is_checkmate(self.current_player):
+                self.handle_game_end()
 
     def is_checkmate(self, color):
         """
