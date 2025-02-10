@@ -585,7 +585,8 @@ class ChineseChess:
         
         self.initialize_board()
         self.draw_board()
-        
+    
+
     def evaluate_board(self):
                 
         piece_values = {
@@ -674,46 +675,6 @@ class ChineseChess:
         
         return score
 
-
-
-    def get_all_valid_moves(self, color):
-        """Get all valid moves for a given color"""
-        moves = []
-        for from_row in range(10):
-            for from_col in range(9):
-                piece = self.board[from_row][from_col]
-                if piece and piece[0] == color[0].upper():
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
-                                moves.append(((from_row, from_col), (to_row, to_col)))
-        return moves
-
-    def evaluate_king_safety(self, color):
-        """Evaluate king safety and surrounding protection"""
-        kings = self.find_kings()
-        king_pos = kings[1] if color == 'black' else kings[0]
-        if not king_pos:
-            return -9999
-        
-        king_row, king_col = king_pos
-        safety = 0
-        
-        # Check protecting pieces
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    piece = self.board[r][c]
-                    if piece and piece[0] == color[0].upper():
-                        safety += 30
-        
-        # Penalty for exposed king
-        if self.is_in_check(color):
-            safety -= 200
-        
-        return safety
-
     def evaluate_position_simple(self):
         piece_values = {
             '將': 0, '帥': 0,
@@ -772,6 +733,45 @@ class ChineseChess:
         score += king_safety
         
         return score
+
+
+    def get_all_valid_moves(self, color):
+        """Get all valid moves for a given color"""
+        moves = []
+        for from_row in range(10):
+            for from_col in range(9):
+                piece = self.board[from_row][from_col]
+                if piece and piece[0] == color[0].upper():
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
+                                moves.append(((from_row, from_col), (to_row, to_col)))
+        return moves
+
+    def evaluate_king_safety(self, color):
+        """Evaluate king safety and surrounding protection"""
+        kings = self.find_kings()
+        king_pos = kings[1] if color == 'black' else kings[0]
+        if not king_pos:
+            return -9999
+        
+        king_row, king_col = king_pos
+        safety = 0
+        
+        # Check protecting pieces
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r, c = king_row + dr, king_col + dc
+                if 0 <= r < 10 and 0 <= c < 9:
+                    piece = self.board[r][c]
+                    if piece and piece[0] == color[0].upper():
+                        safety += 30
+        
+        # Penalty for exposed king
+        if self.is_in_check(color):
+            safety -= 200
+        
+        return safety
 
     def minimax(self, depth, alpha, beta, maximizing_player):
         """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
