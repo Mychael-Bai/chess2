@@ -587,35 +587,6 @@ class ChineseChess:
         self.draw_board()
     
 
-    def evaluate_board(self):
-                
-        piece_values = {
-            '將': 0, '帥': 0,      # Kings - valued at 0 since they can't be captured
-            '車': 900,            # Chariot - most valuable piece
-            '馬': 400,            # Horse
-            '炮': 500,            # Cannon
-            '象': 200, '相': 200,  # Elephants
-            '士': 200, '仕': 200,  # Advisors
-            '卒': 100, '兵': 100   # Pawns - base value, will get bonus when advanced
-        }
-        
-        score = 0
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece:
-                    value = piece_values[piece[1]]
-                    if piece[0] == 'B':  # Black pieces (AI)
-                        score += value
-                        # Bonus for advanced positions
-                        if piece[1] in ['卒', '炮']:
-                            score += (row * 10)  # Encourage forward movement
-                    else:  # Red pieces (Human)
-                        score -= value
-                        if piece[1] in ['兵', '炮']:
-                            score -= ((9 - row) * 10)
-        
-        return score
 
     def _move_sorting_score(self, move):
         from_pos, to_pos = move
