@@ -13,6 +13,22 @@ class ChineseChess:
         self.saved_board_states = []  # To store board states for replay
         self.game_over = False  # Add this line
         self.flipped = False  # False means red at bottom, True means black at bottom
+
+        # Add this as a class variable
+        self.piece_attributes = {
+            # Format: [value, attack_power, early_move_penalty]
+            '將': [10000, 1, 50],  # King: High value, low attack, high penalty for early moves
+            '帥': [10000, 1, 50],
+            '車': [900, 9, 0],    # Chariot: High value, high attack, no early move penalty
+            '馬': [400, 7, 0],    # Horse: Medium value, high attack, no early move penalty
+            '炮': [500, 8, 0],    # Cannon: Medium-high value, high attack, no early move penalty
+            '象': [200, 3, 10],   # Elephant: Low value, low attack, small early move penalty
+            '相': [200, 3, 10],
+            '士': [200, 2, 20],   # Advisor: Low value, very low attack, medium early move penalty
+            '仕': [200, 2, 20],
+            '卒': [100, 2, 0],    # Pawn: Low value, low attack, no early move penalty
+            '兵': [100, 2, 0]
+        }
         
         pygame.mixer.init()
 
@@ -193,6 +209,21 @@ class ChineseChess:
         # Make window modal and wait for it to close
         warn_window.focus_set()
         warn_window.wait_window()        
+
+    def get_game_phase(self):
+        """
+        Determine the phase of the game:
+        - Opening (0-10 moves): Focus on development and center control
+        - Midgame (11-30 moves): Focus on attacks and material advantage
+        - Endgame (31+ moves): Focus on king safety and pawns
+        """
+        move_count = len(self.move_history)
+        if move_count <= 10:
+            return "opening"
+        elif move_count <= 30:
+            return "midgame"
+        else:
+            return "endgame"
  
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
@@ -700,63 +731,56 @@ class ChineseChess:
             
         return score
 
+
     def _move_sorting_score(self, move):
         """
-        Score moves for sorting, taking into account the AI's color
-        move: tuple of ((from_row, from_col), (to_row, to_col))
+        Score moves for sorting, taking into account:
+        - Piece value
+        - Attacking power
+        - Game phase
+        - Early move penalties
         """
         from_pos, to_pos = move
         from_piece = self.board[from_pos[0]][from_pos[1]]
         to_piece = self.board[to_pos[0]][to_pos[1]]
         
-        # Determine the AI's color based on board orientation
+        # Determine the AI's color and game phase
         ai_color = 'red' if self.flipped else 'black'
         opponent_color = 'black' if ai_color == 'red' else 'red'
+        game_phase = self.get_game_phase()
         
         score = 0
-        piece_values = {
-            '將': 10000, '帥': 10000,
-            '車': 900,
-            '馬': 400,
-            '炮': 500,
-            '象': 200, '相': 200,
-            '士': 200, '仕': 200,
-            '卒': 100, '兵': 100
-        }
+        piece_type = from_piece[1]
+        value, attack_power, early_penalty = self.piece_attributes[piece_type]
+        
+        # Apply early move penalties in opening phase
+        if game_phase == "opening":
+            score -= early_penalty
+            
+            # Extra penalty for moving king early without being threatened
+            if piece_type in ['將', '帥'] and not self.is_in_check(ai_color):
+                score -= 500  # Severe penalty for unnecessary king moves in opening
         
         # Try the move
         original_piece = self.board[to_pos[0]][to_pos[1]]
         self.board[to_pos[0]][to_pos[1]] = from_piece
         self.board[from_pos[0]][from_pos[1]] = None
         
-        # Highest priority for checkmate of opponent
+        # Evaluate position after move
         if self.is_checkmate(opponent_color):
             score += 10000
-        # High priority for check of opponent
         elif self.is_in_check(opponent_color):
-            score += 1000
-            # Additional bonus if the opponent has limited escape moves
-            escape_moves = 0
-            kings = self.find_kings()
-            king_pos = kings[0] if opponent_color == 'red' else kings[1]
-            if king_pos:
-                king_row, king_col = king_pos
-                for dr in [-1, 0, 1]:
-                    for dc in [-1, 0, 1]:
-                        r, c = king_row + dr, king_col + dc
-                        if 0 <= r < 10 and 0 <= c < 9:
-                            if self.is_valid_move((king_row, king_col), (r, c)):
-                                escape_moves += 1
-            score += (9 - escape_moves) * 100
+            score += attack_power * 100  # Scale check bonus by attacking power
         
-        # Evaluate material gain/loss
+        # Evaluate captures based on attacking power
         if to_piece:  # Capture move
-            score += piece_values[to_piece[1]] * 10
+            target_value = self.piece_attributes[to_piece[1]][0]
+            score += (target_value * attack_power) / 10
         
-        # Position improvement - adjusted based on color
+        # Position improvement
         if from_piece[1] in ['車', '馬', '炮']:
             if 2 <= to_pos[1] <= 6:  # Central files
-                score += 30
+                score += 30 * attack_power / 5
             if ai_color == 'red':
                 if to_pos[0] < 5:  # Red pieces advancing
                     score += 40
@@ -764,11 +788,35 @@ class ChineseChess:
                 if to_pos[0] > 4:  # Black pieces advancing
                     score += 40
         
+        # King safety
+        if piece_type in ['將', '帥']:
+            # Penalize king moves that reduce protection
+            protection_before = self.count_protecting_pieces(from_pos)
+            protection_after = self.count_protecting_pieces(to_pos)
+            if protection_after < protection_before:
+                score -= (protection_before - protection_after) * 100
+        
         # Restore position
         self.board[from_pos[0]][from_pos[1]] = from_piece
         self.board[to_pos[0]][to_pos[1]] = original_piece
         
         return score
+
+    def count_protecting_pieces(self, pos):
+        """Count pieces protecting a given position"""
+        row, col = pos
+        color = 'R' if self.board[row][col][0] == 'R' else 'B'
+        protectors = 0
+        
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r, c = row + dr, col + dc
+                if 0 <= r < 10 and 0 <= c < 9:
+                    piece = self.board[r][c]
+                    if piece and piece[0] == color:
+                        protectors += 1
+        
+        return protectors
 
     def evaluate_position_simple(self, color='black'):
         """
