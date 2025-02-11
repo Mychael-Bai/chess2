@@ -228,19 +228,25 @@ class ChineseChess:
     def count_protecting_pieces(self, pos):
         """Count pieces protecting a given position"""
         row, col = pos
-        color = 'R' if self.board[row][col][0] == 'R' else 'B'
+        piece = self.board[row][col]
+        
+        # Return 0 if there's no piece at the position
+        if not piece:
+            return 0
+            
+        color = 'R' if piece[0] == 'R' else 'B'
         protectors = 0
         
         for dr in [-1, 0, 1]:
             for dc in [-1, 0, 1]:
                 r, c = row + dr, col + dc
                 if 0 <= r < 10 and 0 <= c < 9:
-                    piece = self.board[r][c]
-                    if piece and piece[0] == color:
+                    checking_piece = self.board[r][c]
+                    if checking_piece and checking_piece[0] == color:
                         protectors += 1
         
-        return protectors 
- 
+        return protectors
+
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
         self.flipped = not self.flipped
@@ -766,10 +772,9 @@ class ChineseChess:
         
         score = 0
         piece_type = from_piece[1]
-        
         attack_power = self.piece_attributes[piece_type][1]  # Index 1 for attack_power
         early_penalty = self.piece_attributes[piece_type][2]  # Index 2 for early_penalty
-                
+        
         # Apply early move penalties in opening phase
         if game_phase == "opening":
             score -= early_penalty
@@ -791,7 +796,7 @@ class ChineseChess:
         
         # Evaluate captures based on attacking power
         if to_piece:  # Capture move
-            target_value = self.piece_attributes[to_piece[1]][0]
+            target_value = self.piece_attributes[to_piece[1]][0]  # Index 0 for value
             score += (target_value * attack_power) / 10
         
         # Position improvement
@@ -805,9 +810,8 @@ class ChineseChess:
                 if to_pos[0] > 4:  # Black pieces advancing
                     score += 40
         
-        # King safety
-        if piece_type in ['將', '帥']:
-            # Penalize king moves that reduce protection
+        # King safety - with added safety checks
+        if piece_type in ['將', '帥'] and self.board[from_pos[0]][from_pos[1]]:
             protection_before = self.count_protecting_pieces(from_pos)
             protection_after = self.count_protecting_pieces(to_pos)
             if protection_after < protection_before:
