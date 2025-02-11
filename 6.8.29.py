@@ -738,9 +738,9 @@ class ChineseChess:
         - Piece value
         - Attacking power
         - Game phase
-        - Early move penalties
+        - Early move penalties with extreme discouragement of early king moves
         """
-        from_pos, to_pos = move  # Fixed: Correctly unpacking the move tuple
+        from_pos, to_pos = move
         from_piece = self.board[from_pos[0]][from_pos[1]]
         to_piece = self.board[to_pos[0]][to_pos[1]]
         
@@ -751,23 +751,40 @@ class ChineseChess:
         
         score = 0
         piece_type = from_piece[1]
-        attack_power = self.piece_attributes[piece_type][1]  # Index 1 for attack_power
-        early_penalty = self.piece_attributes[piece_type][2]  # Index 2 for early_penalty
-                
-        # Opening phase specific scoring
+        attack_power = self.piece_attributes[piece_type][1]
+        early_penalty = self.piece_attributes[piece_type][2]
+        
+        # Opening phase specific scoring with extreme king move prevention
         if game_phase == "opening":
-            score -= early_penalty  # Actually use the early_penalty here
+            score -= early_penalty
             
-            # Severely punish early king moves
+            # Extremely aggressive penalties for early king moves
             if piece_type in ['將', '帥']:
                 if not self.is_in_check(ai_color):
-                    score -= 2000  # Base penalty for early king moves
+                    # Make king moves essentially impossible unless forced
+                    score -= 100000  # Massive base penalty
                     
-                    # Check development before moving king
+                    # Count developed pieces
                     developed_pieces = self._count_developed_pieces(ai_color)
                     if developed_pieces < 4:
-                        score -= 3000  # Additional penalty for moving king before developing pieces
-                                
+                        score -= 50000  # Additional huge penalty for moving before development
+                    
+                    # Only allow king moves if under direct threat
+                    enemy_attackers = self._count_attacking_pieces(from_pos, opponent_color)
+                    if enemy_attackers == 0:
+                        score -= 200000  # Extreme penalty if not under threat
+            
+            # Encourage development of other pieces
+            elif piece_type in ['車', '馬', '炮']:
+                # Reward developing these pieces
+                if self._is_development_move(from_pos, to_pos, ai_color):
+                    score += 1000
+                
+                # Extra reward for controlling center
+                if 2 <= to_pos[1] <= 6:
+                    score += 500
+        
+        # Rest of move evaluation
         # Try the move
         original_piece = self.board[to_pos[0]][to_pos[1]]
         self.board[to_pos[0]][to_pos[1]] = from_piece
@@ -777,37 +794,78 @@ class ChineseChess:
         if self.is_checkmate(opponent_color):
             score += 10000
         elif self.is_in_check(opponent_color):
-            score += attack_power * 100  # Scale check bonus by attacking power
+            score += attack_power * 100
         
-        # Evaluate captures based on attacking power
-        if to_piece:  # Capture move
+        # Evaluate captures
+        if to_piece:
             target_value = self.piece_attributes[to_piece[1]][0]
             score += (target_value * attack_power) / 10
         
         # Position improvement
         if from_piece[1] in ['車', '馬', '炮']:
             if 2 <= to_pos[1] <= 6:  # Central files
-                score += 400  # Increased positional bonus
+                score += 400
             if ai_color == 'red':
-                if to_pos[0] < 5:  # Red pieces advancing
-                    score += 40
-            else:  # black
-                if to_pos[0] > 4:  # Black pieces advancing
-                    score += 40
+                if to_pos[0] < 5:
+                    score += 300
+            else:
+                if to_pos[0] > 4:
+                    score += 300
         
         # King safety
         if piece_type in ['將', '帥'] and self.board[from_pos[0]][from_pos[1]]:
             protection_before = self.count_protecting_pieces(from_pos)
             protection_after = self.count_protecting_pieces(to_pos)
             if protection_after < protection_before:
-                score -= (protection_before - protection_after) * 200
+                score -= (protection_before - protection_after) * 300
         
         # Restore position
         self.board[from_pos[0]][from_pos[1]] = from_piece
         self.board[to_pos[0]][to_pos[1]] = original_piece
         
         return score
-    
+
+    def _count_attacking_pieces(self, pos, attacking_color):
+        """Count pieces of given color that can attack the position"""
+        count = 0
+        for row in range(10):
+            for col in range(9):
+                piece = self.board[row][col]
+                if piece and piece[0] == attacking_color[0].upper():
+                    if self.is_valid_move((row, col), pos):
+                        count += 1
+        return count
+
+    def _is_development_move(self, from_pos, to_pos, color):
+        """Check if a move develops a piece to a better position"""
+        piece_type = self.board[from_pos[0]][from_pos[1]][1]
+        
+        # Define good development squares
+        good_squares = {
+            'red': {
+                '車': [(5, x) for x in range(9)],
+                '馬': [(6, x) for x in range(9)],
+                '炮': [(5, x) for x in range(9)]
+            },
+            'black': {
+                '車': [(4, x) for x in range(9)],
+                '馬': [(3, x) for x in range(9)],
+                '炮': [(4, x) for x in range(9)]
+            }
+        }
+        
+        if self.flipped:
+            # Adjust for flipped board
+            temp = good_squares['red']
+            good_squares['red'] = {piece: [(9-row, col) for row, col in positions]
+                                 for piece, positions in good_squares['black'].items()}
+            good_squares['black'] = {piece: [(9-row, col) for row, col in positions]
+                                   for piece, positions in temp.items()}
+        
+        if piece_type in ['車', '馬', '炮']:
+            return to_pos in good_squares[color][piece_type]
+        return False
+
     def _count_developed_pieces(self, color):
         """Count how many major pieces (chariot, horse, cannon) have moved from their initial positions"""
         developed = 0
