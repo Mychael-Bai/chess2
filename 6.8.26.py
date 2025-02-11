@@ -715,7 +715,7 @@ class ChineseChess:
         
         score = 0
         piece_values = {
-            '將': 0, '帥': 0,
+            '將': 10000, '帥': 10000,
             '車': 900,
             '馬': 400,
             '炮': 500,
@@ -776,7 +776,7 @@ class ChineseChess:
         color: 'red' or 'black', defaults to 'black' for backward compatibility
         """
         piece_values = {
-            '將': 0, '帥': 0,
+            '將': 10000, '帥': 10000,
             '車': 900,
             '馬': 400,
             '炮': 500,
@@ -857,7 +857,7 @@ class ChineseChess:
         """Evaluate how safe a piece is in its current position"""
         safety_score = 0
         piece_values = {
-            '將': 0, '帥': 0,
+            '將': 10000, '帥': 10000,
             '車': 900,
             '馬': 400,
             '炮': 500,
