@@ -766,8 +766,10 @@ class ChineseChess:
         
         score = 0
         piece_type = from_piece[1]
-        value, attack_power, early_penalty = self.piece_attributes[piece_type]
         
+        attack_power = self.piece_attributes[piece_type][1]  # Index 1 for attack_power
+        early_penalty = self.piece_attributes[piece_type][2]  # Index 2 for early_penalty
+                
         # Apply early move penalties in opening phase
         if game_phase == "opening":
             score -= early_penalty
