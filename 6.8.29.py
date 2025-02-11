@@ -753,9 +753,11 @@ class ChineseChess:
         piece_type = from_piece[1]
         attack_power = self.piece_attributes[piece_type][1]  # Index 1 for attack_power
         early_penalty = self.piece_attributes[piece_type][2]  # Index 2 for early_penalty
-        
+                
         # Opening phase specific scoring
         if game_phase == "opening":
+            score -= early_penalty  # Actually use the early_penalty here
+            
             # Severely punish early king moves
             if piece_type in ['將', '帥']:
                 if not self.is_in_check(ai_color):
@@ -765,7 +767,7 @@ class ChineseChess:
                     developed_pieces = self._count_developed_pieces(ai_color)
                     if developed_pieces < 4:
                         score -= 3000  # Additional penalty for moving king before developing pieces
-        
+                                
         # Try the move
         original_piece = self.board[to_pos[0]][to_pos[1]]
         self.board[to_pos[0]][to_pos[1]] = from_piece
