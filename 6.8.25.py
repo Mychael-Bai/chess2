@@ -595,7 +595,6 @@ class ChineseChess:
         self.draw_board()
     
 
-
     def _move_sorting_score(self, move):
         from_pos, to_pos = move
         from_piece = self.board[from_pos[0]][from_pos[1]]
