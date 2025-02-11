@@ -416,65 +416,6 @@ class ChineseChess:
 
             self.game_over = False  # Explicitly set game_over to False if not checkmate
             
-    def evaluate_checkmate_potential(self, color):
-        """Evaluate how close we are to achieving checkmate"""
-        opposing_color = 'red' if color == 'black' else 'black'
-        kings = self.find_kings()
-        opponent_king_pos = kings[0] if color == 'black' else kings[1]
-        score = 0
-        
-        if not opponent_king_pos:
-            return 0
-            
-        king_row, king_col = opponent_king_pos
-        
-        # Count attacking pieces near opponent's king
-        attackers = 0
-        attack_value = 0
-        for dr in range(-2, 3):
-            for dc in range(-2, 3):
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    piece = self.board[r][c]
-                    if piece and piece[0] == color[0].upper():
-                        attackers += 1
-                        # Higher value for powerful pieces near the king
-                        if piece[1] in ['車', '馬', '炮']:
-                            attack_value += 50
-                        else:
-                            attack_value += 20
-        
-        score += attackers * 30 + attack_value
-        
-        # Bonus if opponent's king has limited mobility
-        escape_moves = 0
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    if (r, c) != (king_row, king_col):
-                        if self.is_valid_move((king_row, king_col), (r, c)):
-                            # Try the move
-                            original_piece = self.board[r][c]
-                            self.board[r][c] = self.board[king_row][king_col]
-                            self.board[king_row][king_col] = None
-                            
-                            if not self.is_in_check(opposing_color):
-                                escape_moves += 1
-                                
-                            # Restore the position
-                            self.board[king_row][king_col] = self.board[r][c]
-                            self.board[r][c] = original_piece
-        
-        # Higher score when opponent has fewer escape moves
-        score += (9 - escape_moves) * 50
-        
-        # Extra bonus if opponent is in check
-        if self.is_in_check(opposing_color):
-            score += 200
-            
-        return score
-
     def handle_game_end(self):
         """Handle end of game tasks"""
         self.game_over = True
@@ -593,7 +534,171 @@ class ChineseChess:
         
         self.initialize_board()
         self.draw_board()
+        
+    def get_all_valid_moves(self, color):
+        """Get all valid moves for a given color"""
+        moves = []
+        for from_row in range(10):
+            for from_col in range(9):
+                piece = self.board[from_row][from_col]
+                if piece and piece[0] == color[0].upper():
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
+                                moves.append(((from_row, from_col), (to_row, to_col)))
+        return moves
+
+    def is_checkmate(self, color):
+        """
+        Check if the given color is in checkmate.
+        Returns True if the player has no legal moves to escape check.
+        """
+        # If not in check, can't be checkmate
+        if not self.is_in_check(color):
+            return False
+            
+        # Try every possible move for every piece of the current player
+        for row in range(10):
+            for col in range(9):
+                piece = self.board[row][col]
+                if piece and piece[0] == color[0].upper():  # If it's current player's piece
+                    # Try all possible destinations
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.is_valid_move((row, col), (to_row, to_col)):
+                                # Try the move
+                                original_piece = self.board[to_row][to_col]
+                                self.board[to_row][to_col] = piece
+                                self.board[row][col] = None
+                                
+                                # Check if still in check
+                                still_in_check = self.is_in_check(color)
+                                
+                                # Undo the move
+                                self.board[row][col] = piece
+                                self.board[to_row][to_col] = original_piece
+                                
+                                # If any move gets out of check, not checkmate
+                                if not still_in_check:
+                                    return False
+        
+        # If no legal moves found, it's checkmate
+            
+        self.game_over = True  # Add this line
+
+        return True
+
     
+    def minimax(self, depth, alpha, beta, maximizing_player):
+        """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
+        
+        if depth == 0:
+            return self.evaluate_position_simple('red' if self.flipped else 'black')
+        
+        if maximizing_player:
+            max_eval = float('-inf')
+            moves = self.get_all_valid_moves('black')
+            
+            for from_pos, to_pos in moves:
+                # Store and make move
+                moving_piece = self.board[from_pos[0]][from_pos[1]]
+                captured_piece = self.board[to_pos[0]][to_pos[1]]
+                self.board[to_pos[0]][to_pos[1]] = moving_piece
+                self.board[from_pos[0]][from_pos[1]] = None
+                
+                if not self.is_in_check('black'):
+                    eval = self.minimax(depth - 1, alpha, beta, False)
+                    max_eval = max(max_eval, eval)
+                    alpha = max(alpha, eval)
+                
+                # Restore position
+                self.board[from_pos[0]][from_pos[1]] = moving_piece
+                self.board[to_pos[0]][to_pos[1]] = captured_piece
+                
+                if beta <= alpha:
+                    break
+            return max_eval if max_eval != float('-inf') else self.evaluate_position_simple()
+        else:
+            min_eval = float('inf')
+            moves = self.get_all_valid_moves('red')
+            
+            for from_pos, to_pos in moves:
+                moving_piece = self.board[from_pos[0]][from_pos[1]]
+                captured_piece = self.board[to_pos[0]][to_pos[1]]
+                self.board[to_pos[0]][to_pos[1]] = moving_piece
+                self.board[from_pos[0]][from_pos[1]] = None
+                
+                if not self.is_in_check('red'):
+                    eval = self.minimax(depth - 1, alpha, beta, True)
+                    min_eval = min(min_eval, eval)
+                    beta = min(beta, eval)
+                
+                # Restore position
+                self.board[from_pos[0]][from_pos[1]] = moving_piece
+                self.board[to_pos[0]][to_pos[1]] = captured_piece
+                
+                if beta <= alpha:
+                    break
+            return min_eval if min_eval != float('inf') else self.evaluate_position_simple()
+
+    def evaluate_checkmate_potential(self, color):
+        """Evaluate how close we are to achieving checkmate"""
+        opposing_color = 'red' if color == 'black' else 'black'
+        kings = self.find_kings()
+        opponent_king_pos = kings[0] if color == 'black' else kings[1]
+        score = 0
+        
+        if not opponent_king_pos:
+            return 0
+            
+        king_row, king_col = opponent_king_pos
+        
+        # Count attacking pieces near opponent's king
+        attackers = 0
+        attack_value = 0
+        for dr in range(-2, 3):
+            for dc in range(-2, 3):
+                r, c = king_row + dr, king_col + dc
+                if 0 <= r < 10 and 0 <= c < 9:
+                    piece = self.board[r][c]
+                    if piece and piece[0] == color[0].upper():
+                        attackers += 1
+                        # Higher value for powerful pieces near the king
+                        if piece[1] in ['車', '馬', '炮']:
+                            attack_value += 50
+                        else:
+                            attack_value += 20
+        
+        score += attackers * 30 + attack_value
+        
+        # Bonus if opponent's king has limited mobility
+        escape_moves = 0
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r, c = king_row + dr, king_col + dc
+                if 0 <= r < 10 and 0 <= c < 9:
+                    if (r, c) != (king_row, king_col):
+                        if self.is_valid_move((king_row, king_col), (r, c)):
+                            # Try the move
+                            original_piece = self.board[r][c]
+                            self.board[r][c] = self.board[king_row][king_col]
+                            self.board[king_row][king_col] = None
+                            
+                            if not self.is_in_check(opposing_color):
+                                escape_moves += 1
+                                
+                            # Restore the position
+                            self.board[king_row][king_col] = self.board[r][c]
+                            self.board[r][c] = original_piece
+        
+        # Higher score when opponent has fewer escape moves
+        score += (9 - escape_moves) * 50
+        
+        # Extra bonus if opponent is in check
+        if self.is_in_check(opposing_color):
+            score += 200
+            
+        return score
 
     def _move_sorting_score(self, move):
         """
@@ -748,96 +853,6 @@ class ChineseChess:
         
         return score
 
-    def get_all_valid_moves(self, color):
-        """Get all valid moves for a given color"""
-        moves = []
-        for from_row in range(10):
-            for from_col in range(9):
-                piece = self.board[from_row][from_col]
-                if piece and piece[0] == color[0].upper():
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
-                                moves.append(((from_row, from_col), (to_row, to_col)))
-        return moves
-
-    def evaluate_king_safety(self, color):
-        """Evaluate king safety and surrounding protection"""
-        kings = self.find_kings()
-        king_pos = kings[1] if color == 'black' else kings[0]
-        if not king_pos:
-            return -9999
-        
-        king_row, king_col = king_pos
-        safety = 0
-        
-        # Check protecting pieces
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    piece = self.board[r][c]
-                    if piece and piece[0] == color[0].upper():
-                        safety += 30
-        
-        # Penalty for exposed king
-        if self.is_in_check(color):
-            safety -= 200
-        
-        return safety
-
-    def minimax(self, depth, alpha, beta, maximizing_player):
-        """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
-        
-        if depth == 0:
-            return self.evaluate_position_simple('red' if self.flipped else 'black')
-        
-        if maximizing_player:
-            max_eval = float('-inf')
-            moves = self.get_all_valid_moves('black')
-            
-            for from_pos, to_pos in moves:
-                # Store and make move
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('black'):
-                    eval = self.minimax(depth - 1, alpha, beta, False)
-                    max_eval = max(max_eval, eval)
-                    alpha = max(alpha, eval)
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-                
-                if beta <= alpha:
-                    break
-            return max_eval if max_eval != float('-inf') else self.evaluate_position_simple()
-        else:
-            min_eval = float('inf')
-            moves = self.get_all_valid_moves('red')
-            
-            for from_pos, to_pos in moves:
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('red'):
-                    eval = self.minimax(depth - 1, alpha, beta, True)
-                    min_eval = min(min_eval, eval)
-                    beta = min(beta, eval)
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-                
-                if beta <= alpha:
-                    break
-            return min_eval if min_eval != float('inf') else self.evaluate_position_simple()
-
     def evaluate_piece_safety(self, row, col, piece, color):
         """Evaluate how safe a piece is in its current position"""
         safety_score = 0
@@ -884,45 +899,30 @@ class ChineseChess:
             
         return safety_score
 
-    def is_checkmate(self, color):
-        """
-        Check if the given color is in checkmate.
-        Returns True if the player has no legal moves to escape check.
-        """
-        # If not in check, can't be checkmate
-        if not self.is_in_check(color):
-            return False
-            
-        # Try every possible move for every piece of the current player
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece and piece[0] == color[0].upper():  # If it's current player's piece
-                    # Try all possible destinations
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.is_valid_move((row, col), (to_row, to_col)):
-                                # Try the move
-                                original_piece = self.board[to_row][to_col]
-                                self.board[to_row][to_col] = piece
-                                self.board[row][col] = None
-                                
-                                # Check if still in check
-                                still_in_check = self.is_in_check(color)
-                                
-                                # Undo the move
-                                self.board[row][col] = piece
-                                self.board[to_row][to_col] = original_piece
-                                
-                                # If any move gets out of check, not checkmate
-                                if not still_in_check:
-                                    return False
+    def evaluate_king_safety(self, color):
+        """Evaluate king safety and surrounding protection"""
+        kings = self.find_kings()
+        king_pos = kings[1] if color == 'black' else kings[0]
+        if not king_pos:
+            return -9999
         
-        # If no legal moves found, it's checkmate
-            
-        self.game_over = True  # Add this line
-
-        return True
+        king_row, king_col = king_pos
+        safety = 0
+        
+        # Check protecting pieces
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r, c = king_row + dr, king_col + dc
+                if 0 <= r < 10 and 0 <= c < 9:
+                    piece = self.board[r][c]
+                    if piece and piece[0] == color[0].upper():
+                        safety += 30
+        
+        # Penalty for exposed king
+        if self.is_in_check(color):
+            safety -= 200
+        
+        return safety
 
     # YELLOW HIGHTLIGHT(2nd modification)
 
