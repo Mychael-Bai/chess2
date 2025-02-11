@@ -733,48 +733,79 @@ class ChineseChess:
 
 
     def _move_sorting_score(self, move):
-        """Enhanced move scoring with stronger development focus"""
-        from_pos, from_col = move
+        """
+        Score moves for sorting, taking into account:
+        - Piece value
+        - Attacking power
+        - Game phase
+        - Early move penalties
+        """
+        from_pos, to_pos = move  # Fixed: Correctly unpacking the move tuple
         from_piece = self.board[from_pos[0]][from_pos[1]]
         to_piece = self.board[to_pos[0]][to_pos[1]]
         
-        # Base scoring setup
+        # Determine the AI's color and game phase
         ai_color = 'red' if self.flipped else 'black'
         opponent_color = 'black' if ai_color == 'red' else 'red'
         game_phase = self.get_game_phase()
         
         score = 0
         piece_type = from_piece[1]
-        attack_power = self.piece_attributes[piece_type][1]
-        early_penalty = self.piece_attributes[piece_type][2]
-
+        attack_power = self.piece_attributes[piece_type][1]  # Index 1 for attack_power
+        early_penalty = self.piece_attributes[piece_type][2]  # Index 2 for early_penalty
+        
         # Opening phase specific scoring
         if game_phase == "opening":
             # Severely punish early king moves
             if piece_type in ['將', '帥']:
                 if not self.is_in_check(ai_color):
-                    score -= 2000  # Increased from 500
-                    # Extra penalty for moving king before developing other pieces
+                    score -= 2000  # Base penalty for early king moves
+                    
+                    # Check development before moving king
                     developed_pieces = self._count_developed_pieces(ai_color)
-                    if developed_pieces < 4:  # If less than 4 pieces are developed
-                        score -= 3000  # Additional heavy penalty
-            
-            # Reward developing major pieces
-            if piece_type in ['車', '馬', '炮']:
-                # Reward moving to central files
-                if 2 <= to_pos[1] <= 6:
-                    score += 400  # Increased positional bonus
-                # Reward advancing pieces (adjusted for color)
-                if ai_color == 'red':
-                    if 3 <= to_pos[0] <= 5:  # Good development squares
-                        score += 300
-                else:  # black
-                    if 4 <= to_pos[0] <= 6:  # Good development squares
-                        score += 300
-
-        # Rest of your existing evaluation...
-        [rest of the existing function remains the same]
-
+                    if developed_pieces < 4:
+                        score -= 3000  # Additional penalty for moving king before developing pieces
+        
+        # Try the move
+        original_piece = self.board[to_pos[0]][to_pos[1]]
+        self.board[to_pos[0]][to_pos[1]] = from_piece
+        self.board[from_pos[0]][from_pos[1]] = None
+        
+        # Evaluate position after move
+        if self.is_checkmate(opponent_color):
+            score += 10000
+        elif self.is_in_check(opponent_color):
+            score += attack_power * 100  # Scale check bonus by attacking power
+        
+        # Evaluate captures based on attacking power
+        if to_piece:  # Capture move
+            target_value = self.piece_attributes[to_piece[1]][0]
+            score += (target_value * attack_power) / 10
+        
+        # Position improvement
+        if from_piece[1] in ['車', '馬', '炮']:
+            if 2 <= to_pos[1] <= 6:  # Central files
+                score += 400  # Increased positional bonus
+            if ai_color == 'red':
+                if to_pos[0] < 5:  # Red pieces advancing
+                    score += 40
+            else:  # black
+                if to_pos[0] > 4:  # Black pieces advancing
+                    score += 40
+        
+        # King safety
+        if piece_type in ['將', '帥'] and self.board[from_pos[0]][from_pos[1]]:
+            protection_before = self.count_protecting_pieces(from_pos)
+            protection_after = self.count_protecting_pieces(to_pos)
+            if protection_after < protection_before:
+                score -= (protection_before - protection_after) * 200
+        
+        # Restore position
+        self.board[from_pos[0]][from_pos[1]] = from_piece
+        self.board[to_pos[0]][to_pos[1]] = original_piece
+        
+        return score
+    
     def _count_developed_pieces(self, color):
         """Count how many major pieces (chariot, horse, cannon) have moved from their initial positions"""
         developed = 0
