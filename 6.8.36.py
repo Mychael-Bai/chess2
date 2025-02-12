@@ -82,27 +82,13 @@ class ChineseChess:
         
 
         
-        # Create left frame for records display
-        self.records_frame = tk.Frame(self.main_frame)
-        self.records_frame.pack(side=tk.LEFT, padx=20)  # Add padding between board and button
-
+        
 
 
         # Create right frame for the button with padding
         self.button_frame = tk.Frame(self.main_frame)
         self.button_frame.pack(side=tk.LEFT, padx=20)  # Add padding between board and button
 
-
-        # Create records button
-        self.records_button = tk.Button(
-            self.button_frame,
-            text="历史记录",
-            command=self.toggle_records,
-            font=('SimSun', 12),
-            width=8,
-            height=1
-        )
-        self.records_button.pack(pady=5)
 
 
         # Create switch color button
