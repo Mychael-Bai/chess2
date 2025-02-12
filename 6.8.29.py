@@ -50,7 +50,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.8.13(progress made)")
+        self.window.title("Chinese Chess 6.8.13(latest)")
         
         self.game_history = []  # List to store all games
         
@@ -87,7 +87,7 @@ class ChineseChess:
         # Create switch color button
         self.switch_color_button = tk.Button(
             self.button_frame,
-            text="换先",
+            text="红黑对调",
             command=self.switch_colors,
             font=('SimSun', 12),
             width=8,
