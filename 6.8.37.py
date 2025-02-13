@@ -1,6 +1,35 @@
 import tkinter as tk
 from tkinter import messagebox
 
+
+from ctypes import windll
+
+# Create the main window
+root = tk.Tk()
+
+# Set minimum window size
+root.minsize(width=800, height=800)
+
+# Optional: Set initial window size
+root.geometry("800x800")
+
+# Disable Windows 11 swipe gestures while keeping window movement
+# This uses the Win32 API to modify window attributes
+GWL_STYLE = -16
+WS_SYSMENU = 0x80000
+try:
+    hwnd = windll.user32.GetParent(root.winfo_id())
+    style = windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+    style = style | WS_SYSMENU  # Enable system menu (including move)
+    windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style)
+except:
+    print("Failed to modify window attributes")
+
+
+root = tk.Tk()
+root.minsize(width=800, height=800)  # Set minimum size
+
+
 import os
 import pygame.mixer
 
@@ -1730,7 +1759,9 @@ class ChineseChess:
 
     def run(self):
         self.window.mainloop()
+root.mainloop()
 
+             
 
 # Create and run the game
 if __name__ == "__main__":
