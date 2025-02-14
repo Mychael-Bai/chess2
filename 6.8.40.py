@@ -109,7 +109,7 @@ class ChineseChess:
             width=8,
             height=1
         )
-        self.turn_off_sound_effect.pack(before=self.switch_color_button)
+        self.turn_off_sound_effect.pack(pady=5, before=self.switch_color_button)
 
         # Create restart button
         button_size = self.piece_radius * 2  # Same size as a piece
@@ -121,7 +121,7 @@ class ChineseChess:
             width=8,
             height=1
         )
-        self.restart_button.pack()
+        self.restart_button.pack(pady=5)
         
         # Create replay button
         self.replay_button = tk.Button(
@@ -239,7 +239,7 @@ class ChineseChess:
             width=8,
             height=1
         )
-        self.turn_off_sound_effect.pack(before=self.switch_color_button)
+        self.turn_off_sound_effect.pack(pady=5, before=self.switch_color_button)
 
  
     def get_game_phase(self):
