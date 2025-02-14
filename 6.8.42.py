@@ -58,7 +58,7 @@ class ChineseChess:
         self.window.title("Chinese Chess 6.8.13(latest, with sound effect button)")
                 
         # Calculate minimum window size needed
-        min_width = 650  # Adjust this value based on your board size and button panel width
+        min_width = 700  # Adjust this value based on your board size and button panel width
         min_height = 700  # Adjust this value based on your board height
         self.window.minsize(min_width, min_height)
         
@@ -245,7 +245,7 @@ class ChineseChess:
             current_height = event.height
             
             # Check if current size is below minimum
-            min_width = 800
+            min_width = 700
             min_height = 700
             
             # If window is too small, enforce minimum size
