@@ -109,7 +109,7 @@ class ChineseChess:
         
         # Create main horizontal frame to hold board and button side by side
         self.main_frame = tk.Frame(self.window)
-        self.main_frame.pack(pady=20, padx=20)
+        self.main_frame.pack(pady=20, padx=5)
         
         # Create the records frame but don't pack it yet
         self.records_frame = tk.Frame(self.main_frame)
