@@ -219,258 +219,6 @@ class ChineseChess:
         # Bind mouse event
         self.canvas.bind('<Button-1>', self.on_click)
 
-    def show_centered_warning(self, title, message):
-        """Shows a warning messagebox centered on the game board"""
-        # Wait for any pending events to be processed
-        self.window.update_idletasks()
-        
-        # Create custom messagebox
-        warn_window = tk.Toplevel()
-        warn_window.title(title)
-        warn_window.geometry('300x100')  # Set size of warning window
-        
-        # Configure the warning window
-        warn_window.transient(self.window)
-        warn_window.grab_set()
-        
-        # Add message and OK button
-        
-        # Add message and OK button with custom fonts
-        tk.Label(
-            warn_window, 
-            text=message, 
-            padx=20, 
-            pady=10,
-            font=('SimSun', 12),  # Chinese font, size 16, bold
-            fg='#000000'  # Black text
-        ).pack()
-        
-        tk.Button(warn_window, text="OK", command=warn_window.destroy, width=10).pack(pady=10)
-        
-        # Wait for the warning window to be ready
-        warn_window.update_idletasks()
-        
-        # Get the coordinates of the main window and board
-        window_x = self.window.winfo_x()
-        window_y = self.window.winfo_y()
-        
-        # Calculate the board's center position
-        board_x = window_x + self.board_frame.winfo_x() + self.canvas.winfo_x()
-        board_y = window_y + self.board_frame.winfo_y() + self.canvas.winfo_y()
-        board_width = self.canvas.winfo_width()
-        board_height = self.canvas.winfo_height()
-        
-        # Get the size of the warning window
-        warn_width = warn_window.winfo_width()
-        warn_height = warn_window.winfo_height()
-        
-        # Calculate the center position
-        x = board_x + (board_width - warn_width) // 2
-        y = board_y + (board_height - warn_height) // 2
-        
-        # Position the warning window
-        warn_window.geometry(f"+{x}+{y}")
-        
-        # Make window modal and wait for it to close
-        warn_window.focus_set()
-        warn_window.wait_window()        
-
-    def get_piece_position_descriptor(self, from_pos, to_pos, piece):
-        """
-        Determine 前/后 based on proximity to opponent's king.
-        If the piece is closer to the opponent's king, it's labeled '前',
-        otherwise it's labeled '后'.
-        """
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-
-        piece_color = piece[0]  # 'R' for red or 'B' for black
-        piece_type = piece[1]   # The type of piece (炮, 車, etc.)
-        
-        # Find all identical pieces in the same column
-        identical_positions = []
-        for row in range(10):
-            current_piece = self.board[row][from_col]
-            if current_piece:
-
-                if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
-                    identical_positions.append(row)
-                else:
-
-
-                    if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
-                        identical_positions.append(row)
-        identical_positions.append(from_row)
-                
-        # If there are two identical pieces in the same column
-        if len(identical_positions) == 2:
-            # Find opponent's king position
-            red_king_pos, black_king_pos = self.find_kings()
-            opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
-            
-            # Calculate distances to opponent's king for both pieces
-            distances = [(abs(row - opponent_king_row), row) for row in identical_positions]
-            
-            # The piece closer to opponent's king is '前', the other is '后'
-            distances.sort()  # Sort by distance to opponent's king
-            if from_row == distances[0][1]:  # If this is the closer piece
-                return "前"
-            else:
-                return "后"
-        
-        # Return empty string if there's only one piece of this type in the column
-        return ""
-
-    def get_move_text(self, from_pos, to_pos, piece):
-        """Convert a move into Chinese chess notation"""
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        
-        # Get the piece name
-        piece_name = piece[1]
-        
-        # Get column numbers based on player color
-        if piece[0] == 'R':  # Red player
-            columns = ['一', '二', '三', '四', '五', '六', '七', '八', '九']
-            to_col_text = columns[8 - to_col]
-        else:  # Black player
-            columns = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-            to_col_text = columns[to_col]
-        
-        # Get position descriptor (前/后) if needed
-
-        position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece)
-        
-        # Determine direction
-        if piece[0] == 'R':  # Red player
-            if to_row < from_row:
-                direction = '进'
-            elif to_row > from_row:
-                direction = '退'
-            else:
-                direction = '平'
-        else:  # Black player
-            if to_row > from_row:
-                direction = '进'
-            elif to_row < from_row:
-                direction = '退'
-            else:
-                direction = '平'
-        
-        # Calculate steps or get destination column
-        steps = abs(to_row - from_row)
-        if piece[0] == 'R':  # Red player
-            steps_text = columns[steps-1] if steps > 0 else to_col_text
-        else:  # Black player
-            steps_text = str(steps) if steps > 0 else to_col_text
-
-        # If there's a position descriptor (前/后), use it for cannon notation
-        if position_descriptor and piece_name not in ['仕', '士', '相', '象']:
-            if piece_name == '馬':
-                move_text = f"{position_descriptor}{piece_name}{direction}{to_col_text}"
-            else:
-                move_text = f"{position_descriptor}{piece_name}{direction}{steps_text}"
-        else:
-            # For single pieces or other pieces, include the starting column
-            from_col_text = columns[8 - from_col] if piece[0] == 'R' else columns[from_col]
-            
-            if piece_name in ['兵', '卒', '帥', '將', '車', '炮']:
-
-                move_text = f"{piece_name}{from_col_text}{direction}{steps_text}"
-            else:
-                move_text = f"{piece_name}{from_col_text}{direction}{to_col_text}"
-        
-        return move_text
-
-    def add_move_to_records(self, from_pos, to_pos, piece):
-        """Add a move to the current game history"""
-        move_text = self.get_move_text(from_pos, to_pos, piece)
-        self.move_history_records.append(f"{move_text}")
-        self.update_records_display()
-
-    def update_records_display(self):
-        """Update the records display if it exists"""
-        if self.move_text and self.move_history_records:
-            self.move_text.config(state='normal')
-            self.move_text.delete('1.0', tk.END)
-            for i, move in enumerate(self.move_history_records, 1):
-                self.move_text.insert(tk.END, f"{i}. {move}\n")
-            self.move_text.config(state='disabled')
-            self.move_text.see(tk.END)  # Scroll to the bottom
-
-    def on_window_configure(self, event):
-        """Handle window resize events"""
-        # Only handle events from the main window and avoid recursive calls
-        if event.widget == self.window and not self.processing_resize:
-            try:
-                self.processing_resize = True
-                
-                # Get current window size
-                current_width = event.width
-                current_height = event.height
-                
-                # Determine minimum width based on records visibility
-                min_width = self.records_min_width if self.records_seen else self.base_min_width
-                need_resize = False
-                new_width = current_width
-                new_height = current_height
-                
-                # Check if current size is below minimum
-                if current_width < min_width:
-                    new_width = min_width
-                    need_resize = True
-                
-                if current_height < self.min_height:
-                    new_height = self.min_height
-                    need_resize = True
-                
-                # Update window size if needed
-                if need_resize:
-                    self.window.geometry(f"{new_width}x{new_height}")
-                
-                # Update minimum size constraint
-                self.window.minsize(min_width, self.min_height)
-                
-            finally:
-                self.processing_resize = False
-
-    def toggle_records(self):
-        """Toggle the visibility of the records frame"""
-        self.records_seen = not self.records_seen
-        
-        # Update minimum window size based on records visibility
-        min_width = self.records_min_width if self.records_seen else self.base_min_width
-        self.window.minsize(min_width, self.min_height)
-        
-        # Handle the records frame visibility
-        if self.records_frame.winfo_ismapped():
-            self.records_frame.pack_forget()
-            # Adjust window size if it's too wide
-            current_width = self.window.winfo_width()
-            if current_width > self.base_min_width:
-                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
-        else:
-            # Pack the records frame at the start of main_frame
-            self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=(0, 15))
-            # Ensure window is wide enough for records
-            if self.window.winfo_width() < self.records_min_width:
-                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
-
-    def sound_effect(self,):
-        self.sound_effect_on = not self.sound_effect_on
-        self.turn_off_sound_effect.destroy()
-
-        self.turn_off_sound_effect = tk.Button(
-            self.button_frame,
-            
-            text="关闭音效" if self.sound_effect_on == True else "打开音效",
-            command=self.sound_effect,
-            font=('SimSun', 12),
-            width=8,
-            height=1
-        )
-        self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
-
  
     def get_game_phase(self):
         """
@@ -486,58 +234,7 @@ class ChineseChess:
             return "midgame"
         else:
             return "endgame"
-
-    def switch_colors(self):
-        """Switch the board orientation by rotating it 180 degrees"""
-        self.flipped = not self.flipped
-        
-        
-        # Store current state
-        current_state = [row[:] for row in self.board]
-        current_highlights = self.highlighted_positions[:]
-        
-        # Clear the board
-        self.board = [[None for _ in range(9)] for _ in range(10)]
-        
-        # Rotate pieces 180 degrees
-        for row in range(10):
-            for col in range(9):
-                if current_state[row][col]:
-                    # Rotate position
-                    new_row = 9 - row
-                    new_col = 8 - col
-                    self.board[new_row][new_col] = current_state[row][col]
-        
-        # Rotate highlighted positions if any exist
-        self.highlighted_positions = []
-        for pos in current_highlights:
-            if pos:  # Check if position exists
-                row, col = pos
-                new_row = 9 - row
-                new_col = 8 - col
-                self.highlighted_positions.append((new_row, new_col))
-        
-        # If a piece is selected, update its position
-        if self.selected_piece:
-            row, col = self.selected_piece
-            self.selected_piece = (9 - row, 8 - col)
-        
-        # Update current player and trigger AI move if needed
-        if self.flipped:
-            self.current_player = 'red'  # Set to red so AI plays as red
-
-            if not self.is_checkmate('red') and not self.is_checkmate('black'):
-                self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
-        
-        else:
-            self.current_player = 'black'
-        
-            if not self.is_checkmate('red') and not self.is_checkmate('black'):
-                self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
-        
-        # Redraw the board
-        self.draw_board()
-          
+ 
     def on_click(self, event):
 
         if self.is_checkmate('red') or self.is_checkmate('black'):
@@ -722,178 +419,8 @@ class ChineseChess:
         if not self.is_checkmate(opponent_color):
 
             self.game_over = False  # Explicitly set game_over to False if not checkmate
-            
-    def handle_game_end(self):
-        """Handle end of game tasks"""
-        self.game_over = True
-        self.show_centered_warning("游戏结束", "绝 杀 ！")
-        # Enable replay button after checkmate
-        self.replay_button.config(state=tk.NORMAL)
+       
 
-    def set_button_states_for_gameplay(self):
-        """Set button states for normal gameplay"""
-        self.restart_button.config(state=tk.NORMAL)      # Keep restart button enabled
-
-        # Enable replay button if game is over, disable otherwise
-        if self.game_over:
-            self.replay_button.config(state=tk.NORMAL)
-        else:
-            self.replay_button.config(state=tk.DISABLED)
-                    
-        self.prev_move_button.config(state=tk.DISABLED)  # Disable previous move button
-        self.next_move_button.config(state=tk.DISABLED)  # Disable next move button
-
-    def add_move_to_history(self, from_pos, to_pos, piece):
-        """Record a move and board state"""
-        move = {
-            'from_pos': from_pos,
-            'to_pos': to_pos,
-            'piece': piece,
-            'board_state': [row[:] for row in self.board]  # Deep copy of board
-        }
-        self.move_history.append(move)
-
-    def start_replay(self):
-
-
-        """Start replay mode"""
-        if not self.move_history:
-            self.show_centered_warning("提示", "没有可以回放的历史记录")
-            return
-            
-        self.replay_mode = True
-        self.current_replay_index = 0
-        self.highlighted_positions = []  # Clear all highlights
-
-        # Disable normal game buttons during replay
-        self.replay_button.config(state=tk.DISABLED)
-        self.next_move_button.config(state=tk.NORMAL)
-        self.prev_move_button.config(state=tk.DISABLED)
-        
-        # Reset board to initial state
-        self.initialize_board()
-        self.draw_board()
-
-    def next_replay_move(self):
-        """Show next move in replay"""
-        if not self.replay_mode or self.current_replay_index >= len(self.move_history):
-            self.end_replay()
-            return
-            
-        move = self.move_history[self.current_replay_index]
-        # Restore board state
-        for i in range(len(self.board)):
-            self.board[i] = move['board_state'][i][:]
-        
-        # Highlight the move
-        self.highlighted_positions = [move['from_pos'], move['to_pos']]
-        self.current_replay_index += 1
-        
-        # Enable previous button as we're not at the start
-        self.prev_move_button.config(state=tk.NORMAL)
-        
-        # If last move
-        if self.current_replay_index >= len(self.move_history):
-            self.next_move_button.config(state=tk.DISABLED)
-        
-        self.draw_board()
-
-    def prev_replay_move(self):
-        """Show previous move in replay"""
-        if not self.replay_mode or self.current_replay_index <= 0:
-            return
-            
-        self.current_replay_index -= 1
-        
-        # If at the beginning, disable prev button
-        if self.current_replay_index == 0:
-            self.prev_move_button.config(state=tk.DISABLED)
-        
-        # Always enable next button when we go back
-        self.next_move_button.config(state=tk.NORMAL)
-        
-        # If there are moves to show, display the board state at that index
-        if self.current_replay_index > 0:
-            move = self.move_history[self.current_replay_index - 1]
-            # Restore board state
-            for i in range(len(self.board)):
-                self.board[i] = move['board_state'][i][:]
-        else:
-            # If we're at the beginning, show initial board
-            self.initialize_board()
-        
-        # Update highlights if not at the beginning
-        if self.current_replay_index > 0:
-            move = self.move_history[self.current_replay_index - 1]
-            self.highlighted_positions = [move['from_pos'], move['to_pos']]
-        else:
-            self.highlighted_positions = []
-        
-        self.draw_board()
-
-    def end_replay(self):
-        """End replay mode"""
-        self.replay_mode = False
-        self.current_replay_index = 0
-
-        # Set button states for normal gameplay
-        self.set_button_states_for_gameplay()
-        
-        self.initialize_board()
-        self.draw_board()
-        
-    def get_all_valid_moves(self, color):
-        """Get all valid moves for a given color"""
-        moves = []
-        for from_row in range(10):
-            for from_col in range(9):
-                piece = self.board[from_row][from_col]
-                if piece and piece[0] == color[0].upper():
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
-                                moves.append(((from_row, from_col), (to_row, to_col)))
-        return moves
-
-    def is_checkmate(self, color):
-        """
-        Check if the given color is in checkmate.
-        Returns True if the player has no legal moves to escape check.
-        """
-        # If not in check, can't be checkmate
-        if not self.is_in_check(color):
-            return False
-            
-        # Try every possible move for every piece of the current player
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece and piece[0] == color[0].upper():  # If it's current player's piece
-                    # Try all possible destinations
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.is_valid_move((row, col), (to_row, to_col)):
-                                # Try the move
-                                original_piece = self.board[to_row][to_col]
-                                self.board[to_row][to_col] = piece
-                                self.board[row][col] = None
-                                
-                                # Check if still in check
-                                still_in_check = self.is_in_check(color)
-                                
-                                # Undo the move
-                                self.board[row][col] = piece
-                                self.board[to_row][to_col] = original_piece
-                                
-                                # If any move gets out of check, not checkmate
-                                if not still_in_check:
-                                    return False
-        
-        # If no legal moves found, it's checkmate
-            
-        self.game_over = True  # Add this line
-
-        return True
 
     
     def minimax(self, depth, alpha, beta, maximizing_player):
@@ -1006,7 +533,6 @@ class ChineseChess:
             score += 200
             
         return score
-
 
     def _move_sorting_score(self, move):
         """
@@ -1353,6 +879,10 @@ class ChineseChess:
         
         return safety
 
+
+
+
+
     # YELLOW HIGHTLIGHT(2nd modification)
 
     def highlight_piece(self, row, col):
@@ -1371,6 +901,487 @@ class ChineseChess:
             width=2,
             tags='highlight'
         )    
+
+
+    def get_all_valid_moves(self, color):
+        """Get all valid moves for a given color"""
+        moves = []
+        for from_row in range(10):
+            for from_col in range(9):
+                piece = self.board[from_row][from_col]
+                if piece and piece[0] == color[0].upper():
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
+                                moves.append(((from_row, from_col), (to_row, to_col)))
+        return moves
+
+    def is_checkmate(self, color):
+        """
+        Check if the given color is in checkmate.
+        Returns True if the player has no legal moves to escape check.
+        """
+        # If not in check, can't be checkmate
+        if not self.is_in_check(color):
+            return False
+            
+        # Try every possible move for every piece of the current player
+        for row in range(10):
+            for col in range(9):
+                piece = self.board[row][col]
+                if piece and piece[0] == color[0].upper():  # If it's current player's piece
+                    # Try all possible destinations
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.is_valid_move((row, col), (to_row, to_col)):
+                                # Try the move
+                                original_piece = self.board[to_row][to_col]
+                                self.board[to_row][to_col] = piece
+                                self.board[row][col] = None
+                                
+                                # Check if still in check
+                                still_in_check = self.is_in_check(color)
+                                
+                                # Undo the move
+                                self.board[row][col] = piece
+                                self.board[to_row][to_col] = original_piece
+                                
+                                # If any move gets out of check, not checkmate
+                                if not still_in_check:
+                                    return False
+        
+        # If no legal moves found, it's checkmate
+            
+        self.game_over = True  # Add this line
+
+        return True
+
+
+    def switch_colors(self):
+        """Switch the board orientation by rotating it 180 degrees"""
+        self.flipped = not self.flipped
+        
+        
+        # Store current state
+        current_state = [row[:] for row in self.board]
+        current_highlights = self.highlighted_positions[:]
+        
+        # Clear the board
+        self.board = [[None for _ in range(9)] for _ in range(10)]
+        
+        # Rotate pieces 180 degrees
+        for row in range(10):
+            for col in range(9):
+                if current_state[row][col]:
+                    # Rotate position
+                    new_row = 9 - row
+                    new_col = 8 - col
+                    self.board[new_row][new_col] = current_state[row][col]
+        
+        # Rotate highlighted positions if any exist
+        self.highlighted_positions = []
+        for pos in current_highlights:
+            if pos:  # Check if position exists
+                row, col = pos
+                new_row = 9 - row
+                new_col = 8 - col
+                self.highlighted_positions.append((new_row, new_col))
+        
+        # If a piece is selected, update its position
+        if self.selected_piece:
+            row, col = self.selected_piece
+            self.selected_piece = (9 - row, 8 - col)
+        
+        # Update current player and trigger AI move if needed
+        if self.flipped:
+            self.current_player = 'red'  # Set to red so AI plays as red
+
+            if not self.is_checkmate('red') and not self.is_checkmate('black'):
+                self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
+        
+        else:
+            self.current_player = 'black'
+        
+            if not self.is_checkmate('red') and not self.is_checkmate('black'):
+                self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
+        
+        # Redraw the board
+        self.draw_board()
+         
+     
+    def handle_game_end(self):
+        """Handle end of game tasks"""
+        self.game_over = True
+        self.show_centered_warning("游戏结束", "绝 杀 ！")
+        # Enable replay button after checkmate
+        self.replay_button.config(state=tk.NORMAL)
+
+    def set_button_states_for_gameplay(self):
+        """Set button states for normal gameplay"""
+        self.restart_button.config(state=tk.NORMAL)      # Keep restart button enabled
+
+        # Enable replay button if game is over, disable otherwise
+        if self.game_over:
+            self.replay_button.config(state=tk.NORMAL)
+        else:
+            self.replay_button.config(state=tk.DISABLED)
+                    
+        self.prev_move_button.config(state=tk.DISABLED)  # Disable previous move button
+        self.next_move_button.config(state=tk.DISABLED)  # Disable next move button
+
+    def add_move_to_history(self, from_pos, to_pos, piece):
+        """Record a move and board state"""
+        move = {
+            'from_pos': from_pos,
+            'to_pos': to_pos,
+            'piece': piece,
+            'board_state': [row[:] for row in self.board]  # Deep copy of board
+        }
+        self.move_history.append(move)
+
+
+    def show_centered_warning(self, title, message):
+        """Shows a warning messagebox centered on the game board"""
+        # Wait for any pending events to be processed
+        self.window.update_idletasks()
+        
+        # Create custom messagebox
+        warn_window = tk.Toplevel()
+        warn_window.title(title)
+        warn_window.geometry('300x100')  # Set size of warning window
+        
+        # Configure the warning window
+        warn_window.transient(self.window)
+        warn_window.grab_set()
+        
+        # Add message and OK button
+        
+        # Add message and OK button with custom fonts
+        tk.Label(
+            warn_window, 
+            text=message, 
+            padx=20, 
+            pady=10,
+            font=('SimSun', 12),  # Chinese font, size 16, bold
+            fg='#000000'  # Black text
+        ).pack()
+        
+        tk.Button(warn_window, text="OK", command=warn_window.destroy, width=10).pack(pady=10)
+        
+        # Wait for the warning window to be ready
+        warn_window.update_idletasks()
+        
+        # Get the coordinates of the main window and board
+        window_x = self.window.winfo_x()
+        window_y = self.window.winfo_y()
+        
+        # Calculate the board's center position
+        board_x = window_x + self.board_frame.winfo_x() + self.canvas.winfo_x()
+        board_y = window_y + self.board_frame.winfo_y() + self.canvas.winfo_y()
+        board_width = self.canvas.winfo_width()
+        board_height = self.canvas.winfo_height()
+        
+        # Get the size of the warning window
+        warn_width = warn_window.winfo_width()
+        warn_height = warn_window.winfo_height()
+        
+        # Calculate the center position
+        x = board_x + (board_width - warn_width) // 2
+        y = board_y + (board_height - warn_height) // 2
+        
+        # Position the warning window
+        warn_window.geometry(f"+{x}+{y}")
+        
+        # Make window modal and wait for it to close
+        warn_window.focus_set()
+        warn_window.wait_window()        
+
+    def get_piece_position_descriptor(self, from_pos, to_pos, piece):
+        """
+        Determine 前/后 based on proximity to opponent's king.
+        If the piece is closer to the opponent's king, it's labeled '前',
+        otherwise it's labeled '后'.
+        """
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+
+        piece_color = piece[0]  # 'R' for red or 'B' for black
+        piece_type = piece[1]   # The type of piece (炮, 車, etc.)
+        
+        # Find all identical pieces in the same column
+        identical_positions = []
+        for row in range(10):
+            current_piece = self.board[row][from_col]
+            if current_piece:
+
+                if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
+                    identical_positions.append(row)
+                else:
+
+
+                    if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
+                        identical_positions.append(row)
+        identical_positions.append(from_row)
+                
+        # If there are two identical pieces in the same column
+        if len(identical_positions) == 2:
+            # Find opponent's king position
+            red_king_pos, black_king_pos = self.find_kings()
+            opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
+            
+            # Calculate distances to opponent's king for both pieces
+            distances = [(abs(row - opponent_king_row), row) for row in identical_positions]
+            
+            # The piece closer to opponent's king is '前', the other is '后'
+            distances.sort()  # Sort by distance to opponent's king
+            if from_row == distances[0][1]:  # If this is the closer piece
+                return "前"
+            else:
+                return "后"
+        
+        # Return empty string if there's only one piece of this type in the column
+        return ""
+
+    def get_move_text(self, from_pos, to_pos, piece):
+        """Convert a move into Chinese chess notation"""
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        
+        # Get the piece name
+        piece_name = piece[1]
+        
+        # Get column numbers based on player color
+        if piece[0] == 'R':  # Red player
+            columns = ['一', '二', '三', '四', '五', '六', '七', '八', '九']
+            to_col_text = columns[8 - to_col]
+        else:  # Black player
+            columns = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+            to_col_text = columns[to_col]
+        
+        # Get position descriptor (前/后) if needed
+
+        position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece)
+        
+        # Determine direction
+        if piece[0] == 'R':  # Red player
+            if to_row < from_row:
+                direction = '进'
+            elif to_row > from_row:
+                direction = '退'
+            else:
+                direction = '平'
+        else:  # Black player
+            if to_row > from_row:
+                direction = '进'
+            elif to_row < from_row:
+                direction = '退'
+            else:
+                direction = '平'
+        
+        # Calculate steps or get destination column
+        steps = abs(to_row - from_row)
+        if piece[0] == 'R':  # Red player
+            steps_text = columns[steps-1] if steps > 0 else to_col_text
+        else:  # Black player
+            steps_text = str(steps) if steps > 0 else to_col_text
+
+        # If there's a position descriptor (前/后), use it for cannon notation
+        if position_descriptor and piece_name not in ['仕', '士', '相', '象']:
+            if piece_name == '馬':
+                move_text = f"{position_descriptor}{piece_name}{direction}{to_col_text}"
+            else:
+                move_text = f"{position_descriptor}{piece_name}{direction}{steps_text}"
+        else:
+            # For single pieces or other pieces, include the starting column
+            from_col_text = columns[8 - from_col] if piece[0] == 'R' else columns[from_col]
+            
+            if piece_name in ['兵', '卒', '帥', '將', '車', '炮']:
+
+                move_text = f"{piece_name}{from_col_text}{direction}{steps_text}"
+            else:
+                move_text = f"{piece_name}{from_col_text}{direction}{to_col_text}"
+        
+        return move_text
+
+    def add_move_to_records(self, from_pos, to_pos, piece):
+        """Add a move to the current game history"""
+        move_text = self.get_move_text(from_pos, to_pos, piece)
+        self.move_history_records.append(f"{move_text}")
+        self.update_records_display()
+
+    def update_records_display(self):
+        """Update the records display if it exists"""
+        if self.move_text and self.move_history_records:
+            self.move_text.config(state='normal')
+            self.move_text.delete('1.0', tk.END)
+            for i, move in enumerate(self.move_history_records, 1):
+                self.move_text.insert(tk.END, f"{i}. {move}\n")
+            self.move_text.config(state='disabled')
+            self.move_text.see(tk.END)  # Scroll to the bottom
+
+    def on_window_configure(self, event):
+        """Handle window resize events"""
+        # Only handle events from the main window and avoid recursive calls
+        if event.widget == self.window and not self.processing_resize:
+            try:
+                self.processing_resize = True
+                
+                # Get current window size
+                current_width = event.width
+                current_height = event.height
+                
+                # Determine minimum width based on records visibility
+                min_width = self.records_min_width if self.records_seen else self.base_min_width
+                need_resize = False
+                new_width = current_width
+                new_height = current_height
+                
+                # Check if current size is below minimum
+                if current_width < min_width:
+                    new_width = min_width
+                    need_resize = True
+                
+                if current_height < self.min_height:
+                    new_height = self.min_height
+                    need_resize = True
+                
+                # Update window size if needed
+                if need_resize:
+                    self.window.geometry(f"{new_width}x{new_height}")
+                
+                # Update minimum size constraint
+                self.window.minsize(min_width, self.min_height)
+                
+            finally:
+                self.processing_resize = False
+
+    def toggle_records(self):
+        """Toggle the visibility of the records frame"""
+        self.records_seen = not self.records_seen
+        
+        # Update minimum window size based on records visibility
+        min_width = self.records_min_width if self.records_seen else self.base_min_width
+        self.window.minsize(min_width, self.min_height)
+        
+        # Handle the records frame visibility
+        if self.records_frame.winfo_ismapped():
+            self.records_frame.pack_forget()
+            # Adjust window size if it's too wide
+            current_width = self.window.winfo_width()
+            if current_width > self.base_min_width:
+                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
+        else:
+            # Pack the records frame at the start of main_frame
+            self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=(0, 15))
+            # Ensure window is wide enough for records
+            if self.window.winfo_width() < self.records_min_width:
+                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
+
+    def sound_effect(self,):
+        self.sound_effect_on = not self.sound_effect_on
+        self.turn_off_sound_effect.destroy()
+
+        self.turn_off_sound_effect = tk.Button(
+            self.button_frame,
+            
+            text="关闭音效" if self.sound_effect_on == True else "打开音效",
+            command=self.sound_effect,
+            font=('SimSun', 12),
+            width=8,
+            height=1
+        )
+        self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
+
+
+    def start_replay(self):
+
+
+        """Start replay mode"""
+        if not self.move_history:
+            self.show_centered_warning("提示", "没有可以回放的历史记录")
+            return
+            
+        self.replay_mode = True
+        self.current_replay_index = 0
+        self.highlighted_positions = []  # Clear all highlights
+
+        # Disable normal game buttons during replay
+        self.replay_button.config(state=tk.DISABLED)
+        self.next_move_button.config(state=tk.NORMAL)
+        self.prev_move_button.config(state=tk.DISABLED)
+        
+        # Reset board to initial state
+        self.initialize_board()
+        self.draw_board()
+
+    def next_replay_move(self):
+        """Show next move in replay"""
+        if not self.replay_mode or self.current_replay_index >= len(self.move_history):
+            self.end_replay()
+            return
+            
+        move = self.move_history[self.current_replay_index]
+        # Restore board state
+        for i in range(len(self.board)):
+            self.board[i] = move['board_state'][i][:]
+        
+        # Highlight the move
+        self.highlighted_positions = [move['from_pos'], move['to_pos']]
+        self.current_replay_index += 1
+        
+        # Enable previous button as we're not at the start
+        self.prev_move_button.config(state=tk.NORMAL)
+        
+        # If last move
+        if self.current_replay_index >= len(self.move_history):
+            self.next_move_button.config(state=tk.DISABLED)
+        
+        self.draw_board()
+
+    def prev_replay_move(self):
+        """Show previous move in replay"""
+        if not self.replay_mode or self.current_replay_index <= 0:
+            return
+            
+        self.current_replay_index -= 1
+        
+        # If at the beginning, disable prev button
+        if self.current_replay_index == 0:
+            self.prev_move_button.config(state=tk.DISABLED)
+        
+        # Always enable next button when we go back
+        self.next_move_button.config(state=tk.NORMAL)
+        
+        # If there are moves to show, display the board state at that index
+        if self.current_replay_index > 0:
+            move = self.move_history[self.current_replay_index - 1]
+            # Restore board state
+            for i in range(len(self.board)):
+                self.board[i] = move['board_state'][i][:]
+        else:
+            # If we're at the beginning, show initial board
+            self.initialize_board()
+        
+        # Update highlights if not at the beginning
+        if self.current_replay_index > 0:
+            move = self.move_history[self.current_replay_index - 1]
+            self.highlighted_positions = [move['from_pos'], move['to_pos']]
+        else:
+            self.highlighted_positions = []
+        
+        self.draw_board()
+
+    def end_replay(self):
+        """End replay mode"""
+        self.replay_mode = False
+        self.current_replay_index = 0
+
+        # Set button states for normal gameplay
+        self.set_button_states_for_gameplay()
+        
+        self.initialize_board()
+        self.draw_board()
+        
 
     def initialize_board(self):
         # Initialize empty board
@@ -1561,58 +1572,6 @@ class ChineseChess:
                 font=('Arial', 12)
             )
 
-    def show_victory_message(self, winner):
-        """Shows a victory message with special styling"""
-        # Wait for any pending events to be processed
-        self.window.update_idletasks()
-        
-        # Create victory window
-        victory_window = tk.Toplevel()
-        victory_window.title("胜利")
-        victory_window.geometry('400x150')  # Larger size for victory message
-        
-        # Configure the victory window
-        victory_window.transient(self.window)
-        victory_window.grab_set()
-        
-        # Add message with larger font and decorative style
-        message_frame = tk.Frame(victory_window)
-        message_frame.pack(expand=True, fill='both')
-        
-        tk.Label(
-            message_frame,
-            text=f"🎊 恭喜 🎊\n{winner}赢了！",
-            font=('Arial', 16, 'bold'),
-            pady=20
-        ).pack()
-        
-        # Add OK button with special styling
-        tk.Button(
-            message_frame,
-            text="开始新游戏",
-            command=victory_window.destroy,
-            width=15,
-            height=2,
-            relief=tk.RAISED,
-            bg='#f0f0f0'
-        ).pack(pady=10)
-        
-        # Center the window on the board
-        victory_window.update_idletasks()
-        window_x = self.window.winfo_x()
-        window_y = self.window.winfo_y()
-        board_x = window_x + self.board_frame.winfo_x() + self.canvas.winfo_x()
-        board_y = window_y + self.board_frame.winfo_y() + self.canvas.winfo_y()
-        board_width = self.canvas.winfo_width()
-        board_height = self.canvas.winfo_height()
-        
-        x = board_x + (board_width - victory_window.winfo_width()) // 2
-        y = board_y + (board_height - victory_window.winfo_height()) // 2
-        
-        victory_window.geometry(f"+{x}+{y}")
-        victory_window.focus_set()
-        victory_window.wait_window()
-
     def restart_game(self):
         # Store the current game's move history if it exists
         if self.move_history:
@@ -1638,6 +1597,7 @@ class ChineseChess:
         if self.flipped:
             self.current_player = 'red'  # Set to red so AI plays as red
             self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
+
 
     # Add piece movement validation(8 functions)
 
