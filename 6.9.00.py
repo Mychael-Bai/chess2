@@ -13,6 +13,17 @@ class ChineseChess:
         self.piece_to_place = None
         self.pieces_frame = None
             
+        self.available_pieces = {
+            'red': {
+                'R帥': 1, 'R仕': 2, 'R相': 2, 'R馬': 2,
+                'R車': 2, 'R炮': 2, 'R兵': 5
+            },
+            'black': {
+                'B將': 1, 'B士': 2, 'B象': 2, 'B馬': 2,
+                'B車': 2, 'B炮': 2, 'B卒': 5
+            }
+        }
+            
         # Add this before other initializations
         self.piece_attributes = {
             '將': [10000, 1, 50],  # King: High value, low attack, high penalty for early moves
@@ -246,10 +257,14 @@ class ChineseChess:
             # Clear the board
             self.board = [[None for _ in range(9)] for _ in range(10)]
             self.draw_board()
-            
-            # Create pieces frame if it doesn't exist
+
+            # Reset available pieces
+            self.reset_available_pieces()
+            # Create/update pieces frame
             if not self.pieces_frame:
                 self.create_pieces_frame()
+            else:
+                self.create_pieces_frame()  # Recreate to update
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
             
             # Change button text
@@ -258,7 +273,7 @@ class ChineseChess:
             # Hide pieces frame
             if self.pieces_frame:
                 self.pieces_frame.pack_forget()
-                
+            
             # Reset button text
             self.set_pieces_button.config(text="摆放棋子")
             
@@ -267,6 +282,7 @@ class ChineseChess:
 
     def create_pieces_frame(self):
         self.pieces_frame = tk.Frame(self.main_frame)
+        piece_canvas_size = self.cell_size * 5  # Make the canvas wider to fit pieces
         
         # Create frames for red and black pieces
         red_frame = tk.Frame(self.pieces_frame)
@@ -283,44 +299,92 @@ class ChineseChess:
         top_frame.pack(side=tk.TOP, pady=10)
         bottom_frame.pack(side=tk.BOTTOM, pady=10)
         
-        # Create red pieces buttons
-        red_pieces = [
-            ('R帥', 1), ('R仕', 2), ('R相', 2), ('R馬', 2),
-            ('R車', 2), ('R炮', 2), ('R兵', 5)
-        ]
-        
-        # Create black pieces buttons
-        black_pieces = [
-            ('B將', 1), ('B士', 2), ('B象', 2), ('B馬', 2),
-            ('B車', 2), ('B炮', 2), ('B卒', 5)
-        ]
-        
-        # Helper function to create piece buttons
-        def create_piece_buttons(frame, pieces):
-            for piece, count in pieces:
-                piece_frame = tk.Frame(frame)
-                piece_frame.pack(side=tk.TOP, pady=2)
-                
-                # Show the count of remaining pieces
-                count_label = tk.Label(
-                    piece_frame,
-                    text=f"×{count}",
-                    font=('SimSun', 12)
-                )
-                count_label.pack(side=tk.RIGHT, padx=5)
-                
-                piece_button = tk.Button(
-                    piece_frame,
-                    text=piece[1],  # Show only the piece character
-                    font=('KaiTi', 20),
-                    fg='red' if piece[0] == 'R' else 'black',
-                    width=2,
-                    command=lambda p=piece: self.select_piece_to_place(p)
-                )
-                piece_button.pack(side=tk.LEFT)
-        
-        create_piece_buttons(red_frame, red_pieces)
-        create_piece_buttons(black_frame, black_pieces)
+        def create_piece_section(frame, pieces_dict, color_prefix):
+            canvas = tk.Canvas(
+                frame,
+                width=piece_canvas_size,
+                height=self.cell_size * 4,  # Height for multiple rows
+                bg='#f0d5b0'  # Same background as main board
+            )
+            canvas.pack(padx=10)
+
+            # Layout pieces in a grid
+            row = 0
+            col = 0
+            max_cols = 4  # Number of pieces per row
+
+            for piece, count in pieces_dict.items():
+                if count > 0:  # Only show pieces that are still available
+                    x = col * self.cell_size + self.cell_size // 2
+                    y = row * self.cell_size + self.cell_size // 2
+
+                    # Draw piece circle
+                    canvas.create_oval(
+                        x - self.piece_radius, y - self.piece_radius,
+                        x + self.piece_radius, y + self.piece_radius,
+                        fill='white',
+                        outline='red' if color_prefix == 'R' else 'black',
+                        width=2,
+                        tags=(piece,)  # Use piece as tag for identification
+                    )
+
+                    # Draw piece text
+                    canvas.create_text(
+                        x, y,
+                        text=piece[1],  # Show only the piece character
+                        fill='red' if color_prefix == 'R' else 'black',
+                        font=('KaiTi', 25, 'bold'),
+                        tags=(piece,)  # Use piece as tag for identification
+                    )
+
+                    col += 1
+                    if col >= max_cols:
+                        col = 0
+                        row += 1
+
+            # Bind click event to canvas
+            canvas.tag_bind('all', '<Button-1>', 
+                           lambda event, c=canvas: self.select_piece_from_canvas(event, c))
+            return canvas
+
+        # Create red and black piece sections
+        self.red_canvas = create_piece_section(bottom_frame, self.available_pieces['red'], 'R')
+        self.black_canvas = create_piece_section(top_frame, self.available_pieces['black'], 'B')
+
+    def reset_available_pieces(self):
+        """Reset the available pieces to their initial counts"""
+        self.available_pieces = {
+            'red': {
+                'R帥': 1, 'R仕': 2, 'R相': 2, 'R馬': 2,
+                'R車': 2, 'R炮': 2, 'R兵': 5
+            },
+            'black': {
+                'B將': 1, 'B士': 2, 'B象': 2, 'B馬': 2,
+                'B車': 2, 'B炮': 2, 'B卒': 5
+            }
+        }
+
+    def select_piece_from_canvas(self, event, canvas):
+        """Handle piece selection from the pieces canvas"""
+        # Find the closest item to the click
+        closest = canvas.find_closest(event.x, event.y)
+        if closest:
+            tags = canvas.gettags(closest)
+            if tags:
+                piece = tags[0]  # The first tag is the piece identifier
+                if self.available_pieces['red' if piece.startswith('R') else 'black'][piece] > 0:
+                    self.piece_to_place = piece
+                    # Clear any previous highlights
+                    self.selected_piece = None
+                    self.highlighted_positions = []
+                    # Highlight the selected piece
+                    canvas.delete('highlight')
+                    canvas.create_rectangle(
+                        canvas.bbox(closest),
+                        outline='yellow',
+                        width=2,
+                        tags='highlight'
+                    )
 
     def select_piece_to_place(self, piece):
         """Handle piece selection for placement"""
@@ -329,6 +393,7 @@ class ChineseChess:
         self.selected_piece = None
         self.highlighted_positions = []
         self.draw_board()
+
 
     def get_game_phase(self):
         """
@@ -356,9 +421,20 @@ class ChineseChess:
             if 0 <= row < 10 and 0 <= col < 9 and self.piece_to_place:
                 # Place the piece
                 self.board[row][col] = self.piece_to_place
+                # Update available pieces count
+                color = 'red' if self.piece_to_place.startswith('R') else 'black'
+                self.available_pieces[color][self.piece_to_place] -= 1
+                
+                
+                # Keep piece selected if more are available
+                if self.available_pieces[color][self.piece_to_place] <= 0:
+                    self.piece_to_place = None
+                    
                 self.draw_board()
                 return
                 
+        # ... rest of the existing on_click code ...
+
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
 
