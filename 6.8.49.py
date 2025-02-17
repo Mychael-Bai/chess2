@@ -59,7 +59,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.8.43(latest, with minimum width)")
+        self.window.title("Chinese Chess 6.8.49(records frame narrow)")
            
            
         # Set initial minimum sizes
