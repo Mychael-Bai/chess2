@@ -13,7 +13,8 @@ class ChineseChess:
         self.piece_setting_mode = False
         self.piece_to_place = None
         self.pieces_frame = None
-            
+        self.source_canvas = None  # Track which canvas the selected piece is from
+     
         self.available_pieces = {
             'red': {
                 'R帥': 1, 'R仕': 2, 'R相': 2, 'R馬': 2,
@@ -383,6 +384,7 @@ class ChineseChess:
                 piece = tags[0]  # The first tag is the piece identifier
                 if self.available_pieces['red' if piece.startswith('R') else 'black'][piece] > 0:
                     self.piece_to_place = piece
+                    self.source_canvas = canvas  # Store the source canvas
                     # Clear any previous highlights
                     self.selected_piece = None
                     self.highlighted_positions = []
@@ -391,6 +393,9 @@ class ChineseChess:
                     bbox = canvas.bbox(closest)
                     center_x = (bbox[0] + bbox[2]) / 2
                     center_y = (bbox[1] + bbox[3]) / 2
+                    
+                    # Store the piece's coordinates and ID for later removal
+                    self.selected_piece_info = (piece, closest, center_x, center_y)
                     
                     # Clear previous highlight
                     canvas.delete('highlight')
@@ -445,15 +450,23 @@ class ChineseChess:
                 color = 'red' if self.piece_to_place.startswith('R') else 'black'
                 self.available_pieces[color][self.piece_to_place] -= 1
                 
+                # Remove the piece from the source canvas if no more pieces of this type are available
+                if self.source_canvas and self.available_pieces[color][self.piece_to_place] <= 0:
+                    piece, piece_id, _, _ = self.selected_piece_info
+                    # Delete the piece and its highlight from the source canvas
+                    self.source_canvas.delete(piece)
+                    self.source_canvas.delete('highlight')
                 
                 # Keep piece selected if more are available
                 if self.available_pieces[color][self.piece_to_place] <= 0:
                     self.piece_to_place = None
+                    self.source_canvas = None
                 
                 self.highlighted_positions = [(row, col)]
                 self.draw_board()
                 return
-               
+        
+
 
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
