@@ -1577,6 +1577,7 @@ class ChineseChess:
         if self.move_history:
             self.game_history.append(self.move_history)
         self.move_history = []
+        self.move_history_records = []  # Clear the records list
         
         # Reset game state
         self.selected_piece = None
@@ -1584,11 +1585,17 @@ class ChineseChess:
         self.current_player = 'red'
         self.replay_mode = False
         self.current_replay_index = 0            
-        self.game_over = False  # Add this line
+        self.game_over = False
                     
         # Set button states for normal gameplay
         self.set_button_states_for_gameplay()
                 
+        # Clear the records display
+        if self.move_text:
+            self.move_text.config(state='normal')
+            self.move_text.delete('1.0', tk.END)
+            self.move_text.config(state='disabled')
+        
         # Reinitialize the board
         self.initialize_board()
         self.draw_board()
