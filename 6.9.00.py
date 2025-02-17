@@ -7,7 +7,8 @@ import pygame.mixer
 class ChineseChess:
 
     def __init__(self):
-            
+           
+           
         # Add at the beginning of __init__
         self.piece_setting_mode = False
         self.piece_to_place = None
@@ -236,7 +237,20 @@ class ChineseChess:
                     
         # Bind mouse event
         self.canvas.bind('<Button-1>', self.on_click)
+        self.canvas.bind('<Motion>', self.on_mouse_motion)
 
+    def on_mouse_motion(self, event):
+        """Handle mouse motion to show piece highlight during piece setting mode"""
+        if self.piece_setting_mode and self.piece_to_place:
+            # Convert click coordinates to board position
+            col = round((event.x - self.board_margin) / self.cell_size)
+            row = round((event.y - self.board_margin) / self.cell_size)
+            
+            # Make sure position is within board bounds
+            if 0 <= row < 10 and 0 <= col < 9:
+                # Update highlight position
+                self.highlighted_positions = [(row, col)]
+                self.draw_board()
 
     def create_set_pieces_button(self):
         # Create set pieces button
@@ -436,15 +450,18 @@ class ChineseChess:
                 color = 'red' if self.piece_to_place.startswith('R') else 'black'
                 self.available_pieces[color][self.piece_to_place] -= 1
                 
+                # Redraw the pieces frame to reflect the updated counts
+                self.create_pieces_frame()
+                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
                 
                 # Keep piece selected if more are available
                 if self.available_pieces[color][self.piece_to_place] <= 0:
                     self.piece_to_place = None
-                    
+                
+                self.highlighted_positions = [(row, col)]
                 self.draw_board()
                 return
-                
-        # ... rest of the existing on_click code ...
+               
 
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
