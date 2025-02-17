@@ -80,8 +80,8 @@ class ChineseChess:
            
            
         # Set initial minimum sizes
-        self.base_min_width = 685  # Base minimum width without records
-        self.records_min_width = 950  # Minimum width with records visible
+        self.base_min_width = 700  # Base minimum width without records
+        self.records_min_width = 960  # Minimum width with records visible
         self.min_height = 700  # Minimum height (constant)
         
         # Set initial minimum window size
@@ -127,7 +127,7 @@ class ChineseChess:
                 
         # Create left frame for the board
         self.board_frame = tk.Frame(self.main_frame)
-        self.board_frame.pack(side=tk.LEFT, padx=(0, 0))
+        self.board_frame.pack(side=tk.LEFT, padx=(15, 0))
         
         # Create canvas for the game board
         self.canvas = tk.Canvas(
@@ -307,7 +307,7 @@ class ChineseChess:
                 height=self.cell_size * 3,  # Height for multiple rows
                 bg='#f0d5b0'  # Same background as main board
             )
-            canvas.pack(padx=10)
+            canvas.pack(padx=5)
 
             # Define all pieces in their initial setup pattern
             piece_layout = []
@@ -353,7 +353,7 @@ class ChineseChess:
 
             # Bind click event to canvas
             canvas.tag_bind('all', '<Button-1>', 
-                           lambda event, c=canvas: self.select_piece_from_canvas(event, c))
+                lambda event, c=canvas: self.select_piece_from_canvas(event, c))
             return canvas
 
         # Create red and black piece sections
