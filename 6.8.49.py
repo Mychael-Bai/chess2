@@ -60,18 +60,23 @@ class ChineseChess:
 
         self.window = tk.Tk()
         self.window.title("Chinese Chess 6.8.43(latest, with minimum width)")
-                
-        # Calculate minimum window size needed
+           
+           
+        # Set initial minimum sizes
+        self.base_min_width = 680  # Base minimum width without records
+        self.records_min_width = 820  # Minimum width with records visible
+        self.min_height = 700  # Minimum height (constant)
         
-    
-        min_width = 680  # Adjust this value based on your board size and button panel width
-        min_height = 700  # Adjust this value based on your board height
-        
-        self.window.minsize(min_width, min_height)
+        # Set initial minimum window size
+        self.window.minsize(self.base_min_width, self.min_height)
         
         # Add a configure event handler to maintain minimum size
         self.window.bind('<Configure>', self.on_window_configure)
         
+        # Add a flag to track if we're currently processing a resize
+        self.processing_resize = False
+        
+           
         self.game_history = []  # List to store all games
 
         # Board dimensions and styling
@@ -391,47 +396,63 @@ class ChineseChess:
             self.move_text.config(state='disabled')
             self.move_text.see(tk.END)  # Scroll to the bottom
 
+    def on_window_configure(self, event):
+        """Handle window resize events"""
+        # Only handle events from the main window and avoid recursive calls
+        if event.widget == self.window and not self.processing_resize:
+            try:
+                self.processing_resize = True
+                
+                # Get current window size
+                current_width = event.width
+                current_height = event.height
+                
+                # Determine minimum width based on records visibility
+                min_width = self.records_min_width if self.records_seen else self.base_min_width
+                need_resize = False
+                new_width = current_width
+                new_height = current_height
+                
+                # Check if current size is below minimum
+                if current_width < min_width:
+                    new_width = min_width
+                    need_resize = True
+                
+                if current_height < self.min_height:
+                    new_height = self.min_height
+                    need_resize = True
+                
+                # Update window size if needed
+                if need_resize:
+                    self.window.geometry(f"{new_width}x{new_height}")
+                
+                # Update minimum size constraint
+                self.window.minsize(min_width, self.min_height)
+                
+            finally:
+                self.processing_resize = False
+
     def toggle_records(self):
         """Toggle the visibility of the records frame"""
         self.records_seen = not self.records_seen
+        
+        # Update minimum window size based on records visibility
+        min_width = self.records_min_width if self.records_seen else self.base_min_width
+        self.window.minsize(min_width, self.min_height)
+        
+        # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
             self.records_frame.pack_forget()
+            # Adjust window size if it's too wide
+            current_width = self.window.winfo_width()
+            if current_width > self.base_min_width:
+                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
         else:
             # Pack the records frame at the start of main_frame
             self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=(0, 15))
-
-    def on_window_configure(self, event):
-        """Handle window resize events"""
-        # Only handle events from the main window
-        if event.widget == self.window:
-            # Get current window size
-            current_width = event.width
-            current_height = event.height
-            
-            # Calculate minimum window size needed based on records_seen state
-            if self.records_seen:
-                min_width = 820  # Width when records panel is visible
-                min_height = 700
-            else:
-                min_width = 680  # Width when records panel is hidden
-                min_height = 700
-            
-            # Check if window needs to be resized
-            need_resize = False
-            new_width = current_width
-            new_height = current_height
-            
-            if current_width < min_width:
-                new_width = min_width
-                need_resize = True
-                
-            if current_height < min_height:
-                new_height = min_height
-                need_resize = True
-                
-            # Only resize if necessary
-            if need_resize:
-                self.window.geometry(f"{new_width}x{new_height}")
+            # Ensure window is wide enough for records
+            if self.window.winfo_width() < self.records_min_width:
+                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
 
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on
