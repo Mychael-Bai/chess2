@@ -377,10 +377,21 @@ class ChineseChess:
                     # Clear any previous highlights
                     self.selected_piece = None
                     self.highlighted_positions = []
-                    # Highlight the selected piece
+                    
+                    # Get the coordinates of the piece
+                    bbox = canvas.bbox(closest)
+                    center_x = (bbox[0] + bbox[2]) / 2
+                    center_y = (bbox[1] + bbox[3]) / 2
+                    
+                    # Clear previous highlight
                     canvas.delete('highlight')
+                    
+                    # Create highlight using the same size as game board pieces
                     canvas.create_rectangle(
-                        canvas.bbox(closest),
+                        center_x - self.piece_radius - 2,
+                        center_y - self.piece_radius - 2,
+                        center_x + self.piece_radius + 2,
+                        center_y + self.piece_radius + 2,
                         outline='yellow',
                         width=2,
                         tags='highlight'
