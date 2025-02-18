@@ -105,7 +105,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.9.16(setting pieces feature)")
+        self.window.title("Chinese Chess 6.9.20 (setting pieces feature and switch colors works as well)")
            
            
         # Set initial minimum sizes
@@ -295,6 +295,8 @@ class ChineseChess:
 
     def toggle_piece_setting_mode(self):
         self.piece_setting_mode = not self.piece_setting_mode
+        if self.toggle_piece_setting_mode == True and self.flipped == False:
+            self.current_player = 'red'
         if self.piece_setting_mode:
             # Clear the board
             self.board = [[None for _ in range(9)] for _ in range(10)]
@@ -339,7 +341,7 @@ class ChineseChess:
         self.pieces_frame = tk.Frame(self.main_frame)
         piece_canvas_size = self.cell_size * 6
         
-        # Create frames for red and black pieces
+        # Create frames for top and bottom sections
         top_frame = tk.Frame(self.pieces_frame)
         bottom_frame = tk.Frame(self.pieces_frame)
                 
@@ -355,8 +357,9 @@ class ChineseChess:
             )
             canvas.pack(padx=5)
 
+            # Define piece layouts
             piece_layout = []
-            if color_prefix == 'R':
+            if color_prefix == 'R':  # Red pieces
                 piece_layout = [
                     [('R帥',1), ('R仕',1), ('R仕',1), ('R相',1), ('R相',1)],
                     [('R馬',1), ('R馬',1), ('R車',1), ('R車',1), ('R炮',1), ('R炮',1)],
@@ -380,20 +383,22 @@ class ChineseChess:
                         instance_id = f"{piece}_{row}_{col}"
                         piece_group = []
                         
+                        # Draw piece circle
                         circle = canvas.create_oval(
                             x - self.piece_radius, y - self.piece_radius,
                             x + self.piece_radius, y + self.piece_radius,
                             fill='white',
-                            outline='red' if color_prefix == 'R' else 'black',
+                            outline='red' if piece.startswith('R') else 'black',
                             width=2,
                             tags=(instance_id,)
                         )
                         piece_group.append(circle)
 
+                        # Draw piece text
                         text = canvas.create_text(
                             x, y,
                             text=piece[1],
-                            fill='red' if color_prefix == 'R' else 'black',
+                            fill='red' if piece.startswith('R') else 'black',
                             font=('KaiTi', 25, 'bold'),
                             tags=(instance_id,)
                         )
@@ -405,14 +410,16 @@ class ChineseChess:
 
             return canvas
 
-        # Create red and black piece sections based on board orientation
+        # Create red and black piece sections based on flipped state
         if self.flipped:
-            self.black_canvas = create_piece_section(bottom_frame, 'R')
-            self.red_canvas = create_piece_section(top_frame, 'B')
+            # When flipped, red pieces go on top, black pieces on bottom
+            self.red_canvas = create_piece_section(top_frame, 'R')
+            self.black_canvas = create_piece_section(bottom_frame, 'B')
         else:
+            # When not flipped, black pieces go on top, red pieces on bottom
             self.black_canvas = create_piece_section(top_frame, 'B')
             self.red_canvas = create_piece_section(bottom_frame, 'R')
-        
+
     def select_piece_from_canvas(self, event, canvas, instance_id, piece):
         """Handle piece selection from the pieces canvas"""
         # Clear previous highlights from all canvases
@@ -496,8 +503,6 @@ class ChineseChess:
                 self.selected_instance_id = None
                 return
 
-        if self.is_checkmate('red') or self.is_checkmate('black'):
-            self.game_over = True
 
         if self.replay_mode or self.game_over:  # Add game_over check
             return  # Ignore clicks when game is over or in replay mode
@@ -646,6 +651,7 @@ class ChineseChess:
             from_pos, to_pos = best_move
             # Make the actual move
             self.board[to_pos[0]][to_pos[1]] = best_moving_piece
+
             self.board[from_pos[0]][from_pos[1]] = None
                                                 
             # Play move sound
@@ -675,7 +681,6 @@ class ChineseChess:
         # Check if the opponent is now in checkmate
         opponent_color = 'black' if ai_color == 'red' else 'red'
         if not self.is_checkmate(opponent_color):
-
             self.game_over = False  # Explicitly set game_over to False if not checkmate
        
 
@@ -1246,16 +1251,21 @@ class ChineseChess:
             row, col = self.selected_piece
             self.selected_piece = (9 - row, 8 - col)
         
-        # If in piece setting mode, recreate the pieces frame with swapped positions
-        if self.piece_setting_mode and self.pieces_frame:
-            self.pieces_frame.destroy()
+        # If in piece setting mode, recreate the pieces frame
+        if self.piece_setting_mode:
+            # Clear any selected piece
+            self.piece_to_place = None
+            self.selected_instance_id = None
+            
+            # Recreate the pieces frame
+            if self.pieces_frame:
+                self.pieces_frame.destroy()
             self.create_pieces_frame()
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-        
-        # Update current player and trigger AI move if needed
-        if not self.piece_setting_mode:  # Only change players if not in setting mode
+        else:
+            # Update current player and trigger AI move if needed
             if self.flipped:
-                self.current_player = 'red'  # Set to red so AI plays as red
+                self.current_player = 'red'
                 if not self.is_checkmate('red') and not self.is_checkmate('black'):
                     self.window.after(100, self.make_ai_move)
             else:
@@ -1265,7 +1275,7 @@ class ChineseChess:
         
         # Redraw the board
         self.draw_board()
-     
+
     def handle_game_end(self):
         """Handle end of game tasks"""
         self.game_over = True
