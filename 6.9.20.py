@@ -334,11 +334,10 @@ class ChineseChess:
             
             # Clear selection
             self.piece_to_place = None
-            
-            
+
     def create_pieces_frame(self):
         self.pieces_frame = tk.Frame(self.main_frame)
-        piece_canvas_size = self.cell_size * 6  # Make the canvas wider to fit all pieces
+        piece_canvas_size = self.cell_size * 6
         
         # Create frames for red and black pieces
         top_frame = tk.Frame(self.pieces_frame)
@@ -351,12 +350,11 @@ class ChineseChess:
             canvas = tk.Canvas(
                 frame,
                 width=piece_canvas_size + 5,
-                height=self.cell_size * 3 + 5,  # Height for multiple rows
-                bg='#f0d5b0'  # Same background as main board
+                height=self.cell_size * 3 + 5,
+                bg='#f0d5b0'
             )
             canvas.pack(padx=5)
 
-            # Define piece layouts
             piece_layout = []
             if color_prefix == 'R':
                 piece_layout = [
@@ -379,13 +377,9 @@ class ChineseChess:
                         x = col * self.cell_size + self.cell_size // 2 + 4
                         y = row * self.cell_size + self.cell_size // 2 + 4
                         
-                        # Create unique instance ID
                         instance_id = f"{piece}_{row}_{col}"
-
-                        # Draw piece group
                         piece_group = []
                         
-                        # Draw piece circle
                         circle = canvas.create_oval(
                             x - self.piece_radius, y - self.piece_radius,
                             x + self.piece_radius, y + self.piece_radius,
@@ -396,35 +390,29 @@ class ChineseChess:
                         )
                         piece_group.append(circle)
 
-                        # Draw piece text
                         text = canvas.create_text(
                             x, y,
-                            text=piece[1],  # Show only the piece character
+                            text=piece[1],
                             fill='red' if color_prefix == 'R' else 'black',
                             font=('KaiTi', 25, 'bold'),
                             tags=(instance_id,)
                         )
                         piece_group.append(text)
 
-                        # Bind click events to both circle and text
                         for item in piece_group:
                             canvas.tag_bind(instance_id, '<Button-1>', 
                                 lambda e, c=canvas, i=instance_id, p=piece: self.select_piece_from_canvas(e, c, i, p))
 
             return canvas
 
-        # Create red and black piece sections
+        # Create red and black piece sections based on board orientation
         if self.flipped:
-            
-            self.red_canvas = create_piece_section(bottom_frame, 'B')
-            self.black_canvas = create_piece_section(top_frame, 'R')
-            
+            self.black_canvas = create_piece_section(bottom_frame, 'R')
+            self.red_canvas = create_piece_section(top_frame, 'B')
         else:
-
-            self.red_canvas = create_piece_section(bottom_frame, 'R')
             self.black_canvas = create_piece_section(top_frame, 'B')
-            
-
+            self.red_canvas = create_piece_section(bottom_frame, 'R')
+        
     def select_piece_from_canvas(self, event, canvas, instance_id, piece):
         """Handle piece selection from the pieces canvas"""
         # Clear previous highlights from all canvases
@@ -1224,11 +1212,9 @@ class ChineseChess:
 
         return True
 
-
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
         self.flipped = not self.flipped
-        
         
         # Store current state
         current_state = [row[:] for row in self.board]
@@ -1260,22 +1246,25 @@ class ChineseChess:
             row, col = self.selected_piece
             self.selected_piece = (9 - row, 8 - col)
         
+        # If in piece setting mode, recreate the pieces frame with swapped positions
+        if self.piece_setting_mode and self.pieces_frame:
+            self.pieces_frame.destroy()
+            self.create_pieces_frame()
+            self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+        
         # Update current player and trigger AI move if needed
-        if self.flipped:
-            self.current_player = 'red'  # Set to red so AI plays as red
-
-            if not self.is_checkmate('red') and not self.is_checkmate('black'):
-                self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
-        
-        else:
-            self.current_player = 'black'
-        
-            if not self.is_checkmate('red') and not self.is_checkmate('black'):
-                self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
+        if not self.piece_setting_mode:  # Only change players if not in setting mode
+            if self.flipped:
+                self.current_player = 'red'  # Set to red so AI plays as red
+                if not self.is_checkmate('red') and not self.is_checkmate('black'):
+                    self.window.after(100, self.make_ai_move)
+            else:
+                self.current_player = 'black'
+                if not self.is_checkmate('red') and not self.is_checkmate('black'):
+                    self.window.after(100, self.make_ai_move)
         
         # Redraw the board
         self.draw_board()
-         
      
     def handle_game_end(self):
         """Handle end of game tasks"""
