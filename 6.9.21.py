@@ -670,7 +670,6 @@ class ChineseChess:
             self.game_over = False  # Explicitly set game_over to False if not checkmate
        
 
-
     
     def minimax(self, depth, alpha, beta, maximizing_player):
         """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
@@ -841,8 +840,6 @@ class ChineseChess:
         
         return score
 
-
-
     def evaluate_position_simple(self, color='black'):
         """
         Evaluate board position for the given color.
@@ -926,6 +923,30 @@ class ChineseChess:
         
         return score
 
+
+
+
+
+    # YELLOW HIGHTLIGHT(2nd modification)
+
+    def highlight_piece(self, row, col):
+        """Draw a yellow highlight around the selected piece"""
+        # Calculate position on intersections
+        x = self.board_margin + col * self.cell_size
+        y = self.board_margin + row * self.cell_size
+        
+        # Create a yellow square around the piece
+        self.canvas.create_rectangle(
+            x - self.piece_radius - 2,
+            y - self.piece_radius - 2,
+            x + self.piece_radius + 2,
+            y + self.piece_radius + 2,
+            outline='yellow',
+            width=2,
+            tags='highlight'
+        )    
+
+
     def evaluate_piece_safety(self, row, col, piece, color):
         """Evaluate how safe a piece is in its current position"""
         safety_score = 0
@@ -996,30 +1017,6 @@ class ChineseChess:
             safety -= 200
         
         return safety
-
-
-
-
-
-    # YELLOW HIGHTLIGHT(2nd modification)
-
-    def highlight_piece(self, row, col):
-        """Draw a yellow highlight around the selected piece"""
-        # Calculate position on intersections
-        x = self.board_margin + col * self.cell_size
-        y = self.board_margin + row * self.cell_size
-        
-        # Create a yellow square around the piece
-        self.canvas.create_rectangle(
-            x - self.piece_radius - 2,
-            y - self.piece_radius - 2,
-            x + self.piece_radius + 2,
-            y + self.piece_radius + 2,
-            outline='yellow',
-            width=2,
-            tags='highlight'
-        )    
-
 
     def get_all_valid_moves(self, color):
         """Get all valid moves for a given color"""
