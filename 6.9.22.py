@@ -83,7 +83,6 @@ class ChineseChess:
         self.flipped = False  # False means red at bottom, True means black at bottom
                 
         self.sound_effect_on = True
-
         
         pygame.mixer.init()
 
