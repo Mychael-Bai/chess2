@@ -1219,11 +1219,13 @@ class ChineseChess:
         warn_window.focus_set()
         warn_window.wait_window()        
 
+
     def get_piece_position_descriptor(self, from_pos, to_pos, piece):
         """
         Determine 前/后 based on proximity to opponent's king.
         If the piece is closer to the opponent's king, it's labeled '前',
         otherwise it's labeled '后'.
+        Accounts for board rotation.
         """
         from_row, from_col = from_pos
         to_row, to_col = to_pos
@@ -1236,90 +1238,140 @@ class ChineseChess:
         for row in range(10):
             current_piece = self.board[row][from_col]
             if current_piece:
-
-                if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
-                    identical_positions.append(row)
-                else:
-
-
-                    if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
+                if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
+                    if self.flipped:
+                        # When board is flipped, adjust the position calculation
+                        identical_positions.append(9 - row)
+                    else:
                         identical_positions.append(row)
-        identical_positions.append(from_row)
-                
+        
+        # Add the current piece's position
+        if self.flipped:
+            identical_positions.append(9 - from_row)
+        else:
+            identical_positions.append(from_row)
+                    
         # If there are two identical pieces in the same column
         if len(identical_positions) == 2:
             # Find opponent's king position
             red_king_pos, black_king_pos = self.find_kings()
-            opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
-            
+            if piece_color == 'R':
+                opponent_king_row = black_king_pos[0] if black_king_pos else 0
+            else:
+                opponent_king_row = red_king_pos[0] if red_king_pos else 9
+                
             # Calculate distances to opponent's king for both pieces
-            distances = [(abs(row - opponent_king_row), row) for row in identical_positions]
+            if self.flipped:
+                # When flipped, adjust how distances are calculated
+                distances = [(abs((9 - row) - opponent_king_row), row) for row in identical_positions]
+            else:
+                distances = [(abs(row - opponent_king_row), row) for row in identical_positions]
+                
+            # Sort by distance to opponent's king
+            distances.sort()
+            from_row_adjusted = 9 - from_row if self.flipped else from_row
             
             # The piece closer to opponent's king is '前', the other is '后'
-            distances.sort()  # Sort by distance to opponent's king
-            if from_row == distances[0][1]:  # If this is the closer piece
+            if from_row_adjusted == distances[0][1]:  # If this is the closer piece
                 return "前"
             else:
                 return "后"
         
-        # Return empty string if there's only one piece of this type in the column
         return ""
 
     def get_move_text(self, from_pos, to_pos, piece):
-        """Convert a move into Chinese chess notation"""
+        """Convert a move into Chinese chess notation, accounting for board rotation"""
         from_row, from_col = from_pos
         to_row, to_col = to_pos
         
         # Get the piece name
         piece_name = piece[1]
         
+        # Adjust row positions if board is flipped
+        if self.flipped:
+            display_from_row = 9 - from_row
+            display_to_row = 9 - to_row
+            # Also flip the column numbers for proper notation
+            display_from_col = from_col
+            display_to_col = to_col
+        else:
+            display_from_row = from_row
+            display_to_row = to_row
+            display_from_col = from_col
+            display_to_col = to_col
+        
         # Get column numbers based on player color
         if piece[0] == 'R':  # Red player
             columns = ['一', '二', '三', '四', '五', '六', '七', '八', '九']
-            to_col_text = columns[8 - to_col]
+            if self.flipped:
+                # When flipped, red pieces use normal column numbering
+                from_col_text = columns[display_from_col]
+                to_col_text = columns[display_to_col]
+            else:
+                # When not flipped, red pieces use reversed column numbering
+                from_col_text = columns[8 - display_from_col]
+                to_col_text = columns[8 - display_to_col]
         else:  # Black player
             columns = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-            to_col_text = columns[to_col]
+            if self.flipped:
+                # When flipped, black pieces use reversed column numbering
+                from_col_text = columns[8 - display_from_col]
+                to_col_text = columns[8 - display_to_col]
+            else:
+                # When not flipped, black pieces use normal column numbering
+                from_col_text = columns[display_from_col]
+                to_col_text = columns[display_to_col]
         
         # Get position descriptor (前/后) if needed
-
         position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece)
         
-        # Determine direction
+        # Determine direction based on board orientation
         if piece[0] == 'R':  # Red player
-            if to_row < from_row:
-                direction = '进'
-            elif to_row > from_row:
-                direction = '退'
+            if self.flipped:
+                if display_to_row > display_from_row:
+                    direction = '进'
+                elif display_to_row < display_from_row:
+                    direction = '退'
+                else:
+                    direction = '平'
             else:
-                direction = '平'
+                if display_to_row < display_from_row:
+                    direction = '进'
+                elif display_to_row > display_from_row:
+                    direction = '退'
+                else:
+                    direction = '平'
         else:  # Black player
-            if to_row > from_row:
-                direction = '进'
-            elif to_row < from_row:
-                direction = '退'
+            if self.flipped:
+                if display_to_row < display_from_row:
+                    direction = '进'
+                elif display_to_row > display_from_row:
+                    direction = '退'
+                else:
+                    direction = '平'
             else:
-                direction = '平'
+                if display_to_row > display_from_row:
+                    direction = '进'
+                elif display_to_row < display_from_row:
+                    direction = '退'
+                else:
+                    direction = '平'
         
         # Calculate steps or get destination column
-        steps = abs(to_row - from_row)
+        steps = abs(display_to_row - display_from_row)
         if piece[0] == 'R':  # Red player
             steps_text = columns[steps-1] if steps > 0 else to_col_text
         else:  # Black player
             steps_text = str(steps) if steps > 0 else to_col_text
 
-        # If there's a position descriptor (前/后), use it for cannon notation
+        # Construct the move text based on piece type and position descriptor
         if position_descriptor and piece_name not in ['仕', '士', '相', '象']:
             if piece_name == '馬':
                 move_text = f"{position_descriptor}{piece_name}{direction}{to_col_text}"
             else:
                 move_text = f"{position_descriptor}{piece_name}{direction}{steps_text}"
         else:
-            # For single pieces or other pieces, include the starting column
-            from_col_text = columns[8 - from_col] if piece[0] == 'R' else columns[from_col]
-            
             if piece_name in ['兵', '卒', '帥', '將', '車', '炮']:
-
                 move_text = f"{piece_name}{from_col_text}{direction}{steps_text}"
             else:
                 move_text = f"{piece_name}{from_col_text}{direction}{to_col_text}"
