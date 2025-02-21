@@ -297,7 +297,7 @@ class ChineseChess:
         if self.piece_setting_mode == False:
             self.game_over = False
             
-        if self.toggle_piece_setting_mode == True and self.flipped == False:
+        if self.piece_setting_mode == False and self.flipped == False:
             
             self.current_player = 'red'
         if self.piece_setting_mode:

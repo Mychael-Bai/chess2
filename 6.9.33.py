@@ -294,7 +294,26 @@ class ChineseChess:
 
     def toggle_piece_setting_mode(self):
         self.piece_setting_mode = not self.piece_setting_mode
-        
+        if self.piece_setting_mode == False:
+            self.game_over = False
+            
+                
+            # Store the current game's move history if it exists
+            if self.move_history:
+                self.game_history.append(self.move_history)
+            self.move_history = []
+            self.move_history_records = []  # Clear the records list
+            
+            # Clear the records display
+            if self.move_text:
+                self.move_text.config(state='normal')
+                self.move_text.delete('1.0', tk.END)
+                self.move_text.config(state='disabled')
+            
+            
+        if self.piece_setting_mode == False and self.flipped == False:
+            
+            self.current_player = 'red'
         if self.piece_setting_mode:
             # Clear the board
             self.board = [[None for _ in range(9)] for _ in range(10)]
@@ -318,18 +337,17 @@ class ChineseChess:
             # Change button text
             self.set_pieces_button.config(text="完成摆放")
         else:
-            self.game_over = False
+                
             self.highlighted_positions = []
             self.draw_board()
 
             if self.flipped:
                 self.window.after(500, self.make_ai_move)
-                
+
+                        
             # Hide pieces frame
             if self.pieces_frame:
                 self.pieces_frame.pack_forget()
-                self.pieces_frame.destroy()  # Destroy the frame to ensure clean state
-                self.pieces_frame = None     # Reset the reference
             
             # Reset button text
             self.set_pieces_button.config(text="摆放棋子")
@@ -1421,12 +1439,6 @@ class ChineseChess:
         min_width = self.records_min_width if self.records_seen else self.base_min_width
         self.window.minsize(min_width, self.min_height)
         
-        # Store current piece setting mode state
-        was_in_piece_setting = self.piece_setting_mode
-        
-        # If pieces frame exists and is mapped, remember this
-        pieces_frame_was_visible = self.pieces_frame and self.pieces_frame.winfo_ismapped()
-        
         # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
             self.records_frame.pack_forget()
@@ -1434,17 +1446,16 @@ class ChineseChess:
             current_width = self.window.winfo_width()
             if current_width > self.base_min_width:
                 self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
-            
-            # Restore pieces frame if we were in piece setting mode
-            if pieces_frame_was_visible:
-                if self.pieces_frame:
-                    self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+                
+            # If in piece setting mode, ensure pieces frame is visible
+            if self.piece_setting_mode and self.pieces_frame:
+                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
         else:
             # Pack the records frame at the start of main_frame
             self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
             
-            # If we have a visible pieces frame, repack it to maintain order
-            if pieces_frame_was_visible:
+            # If in piece setting mode and pieces frame exists, repack it
+            if self.piece_setting_mode and self.pieces_frame:
                 self.pieces_frame.pack_forget()
                 self.pieces_frame.pack(side=tk.RIGHT, padx=15)
                 
@@ -1748,6 +1759,7 @@ class ChineseChess:
             )
 
     def restart_game(self):
+
         # Store the current game's move history if it exists
         if self.move_history:
             self.game_history.append(self.move_history)
