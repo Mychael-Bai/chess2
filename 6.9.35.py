@@ -293,11 +293,11 @@ class ChineseChess:
         }
 
     def toggle_piece_setting_mode(self):
-        """Toggle between normal game mode and piece setting mode"""
         self.piece_setting_mode = not self.piece_setting_mode
         if self.piece_setting_mode == False:
             self.game_over = False
             
+                
             # Store the current game's move history if it exists
             if self.move_history:
                 self.game_history.append(self.move_history)
@@ -310,9 +310,10 @@ class ChineseChess:
                 self.move_text.delete('1.0', tk.END)
                 self.move_text.config(state='disabled')
             
-        if self.piece_setting_mode == False and self.flipped == False:
-            self.current_player = 'red'
             
+        if self.piece_setting_mode == False and self.flipped == False:
+            
+            self.current_player = 'red'
         if self.piece_setting_mode:
             # Clear the board
             self.board = [[None for _ in range(9)] for _ in range(10)]
@@ -330,23 +331,20 @@ class ChineseChess:
                 self.pieces_frame.destroy()
                 self.create_pieces_frame()
             
-            # Force window width to accommodate both records and pieces frames
-            current_height = self.window.winfo_height()
-            required_width = max(self.records_min_width + 200, self.window.winfo_width())
-            self.window.geometry(f"{required_width}x{current_height}")
-            
             # Pack the pieces frame with padding
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
             
             # Change button text
             self.set_pieces_button.config(text="完成摆放")
         else:
+                
             self.highlighted_positions = []
             self.draw_board()
 
             if self.flipped:
                 self.window.after(500, self.make_ai_move)
-                
+
+                        
             # Hide pieces frame
             if self.pieces_frame:
                 self.pieces_frame.pack_forget()
@@ -1437,33 +1435,39 @@ class ChineseChess:
         """Toggle the visibility of the records frame"""
         self.records_seen = not self.records_seen
         
-        # Update minimum window size based on records visibility
-        min_width = self.records_min_width if self.records_seen else self.base_min_width
+        # Calculate minimum width based on all visible components
+        min_width = self.base_min_width
+        if self.records_seen:
+            min_width = self.records_min_width
+        if self.piece_setting_mode and self.pieces_frame:
+            # Add extra width for pieces frame
+            min_width += 200  # Adjust this value based on your pieces frame width
+        
+        # Update minimum window size
         self.window.minsize(min_width, self.min_height)
         
         # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
             self.records_frame.pack_forget()
-            # Adjust window size if it's too wide
-            current_width = self.window.winfo_width()
-            if current_width > self.base_min_width:
-                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
-                
-            # If in piece setting mode, ensure pieces frame is visible
-            if self.piece_setting_mode and self.pieces_frame:
-                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+            
+            # Don't reduce window width if pieces frame is visible
+            if not (self.piece_setting_mode and self.pieces_frame):
+                current_width = self.window.winfo_width()
+                if current_width > self.base_min_width:
+                    self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
         else:
             # Pack the records frame at the start of main_frame
             self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
             
-            # If in piece setting mode and pieces frame exists, repack it
-            if self.piece_setting_mode and self.pieces_frame:
-                self.pieces_frame.pack_forget()
-                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-                
-            # Ensure window is wide enough for records
-            if self.window.winfo_width() < self.records_min_width:
-                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
+            # Ensure window is wide enough for all components
+            current_width = self.window.winfo_width()
+            if current_width < min_width:
+                self.window.geometry(f"{min_width}x{self.window.winfo_height()}")
+        
+        # Always ensure pieces frame is visible in piece setting mode
+        if self.piece_setting_mode and self.pieces_frame:
+            self.pieces_frame.pack_forget()
+            self.pieces_frame.pack(side=tk.RIGHT, padx=15)
 
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on

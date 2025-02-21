@@ -139,9 +139,6 @@ class ChineseChess:
         self.main_frame = tk.Frame(self.window)
         self.main_frame.pack(pady=20, padx=5)
         
-        # Create the records frame but don't pack it yet
-        self.records_frame = tk.Frame(self.main_frame)
-        
         # Create move history display
         self.move_text = tk.Text(
             self.records_frame,
@@ -295,6 +292,9 @@ class ChineseChess:
     def toggle_piece_setting_mode(self):
         """Toggle between normal game mode and piece setting mode"""
         self.piece_setting_mode = not self.piece_setting_mode
+        if self.records_seen == True:
+            self.toggle_records()
+            
         if self.piece_setting_mode == False:
             self.game_over = False
             
@@ -332,7 +332,7 @@ class ChineseChess:
             
             # Force window width to accommodate both records and pieces frames
             current_height = self.window.winfo_height()
-            required_width = max(self.records_min_width + 200, self.window.winfo_width())
+            required_width = max(self.records_min_width + 193, self.window.winfo_width())
             self.window.geometry(f"{required_width}x{current_height}")
             
             # Pack the pieces frame with padding
@@ -340,7 +340,20 @@ class ChineseChess:
             
             # Change button text
             self.set_pieces_button.config(text="完成摆放")
+
         else:
+
+            # Force window width to accommodate both records and pieces frames
+            current_height = self.window.winfo_height()
+            required_width = self.base_min_width
+            self.window.geometry(f"{required_width}x{current_height}")
+            
+            # Pack the pieces frame with padding
+            self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+            
+            # Change button text
+            self.set_pieces_button.config(text="完成摆放")
+            
             self.highlighted_positions = []
             self.draw_board()
 
@@ -1397,6 +1410,39 @@ class ChineseChess:
             self.move_text.config(state='disabled')
             self.move_text.see(tk.END)  # Scroll to the bottom
 
+    def toggle_records(self):
+        """Toggle the visibility of the records frame"""
+        self.records_seen = not self.records_seen
+        
+        # Update minimum window size based on records visibility
+        min_width = self.records_min_width if self.records_seen else self.base_min_width
+        self.window.minsize(min_width, self.min_height)
+        
+        # Handle the records frame visibility
+        if self.records_frame.winfo_ismapped():
+            self.records_frame.pack_forget()
+            # Adjust window size if it's too wide
+            current_width = self.window.winfo_width()
+            if current_width > self.base_min_width:
+                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
+                
+            # If in piece setting mode, ensure pieces frame is visible
+            if self.piece_setting_mode and self.pieces_frame:
+                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+        else:
+            # Pack the records frame at the start of main_frame
+            self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
+            
+            # If in piece setting mode and pieces frame exists, repack it
+            if self.piece_setting_mode and self.pieces_frame:
+                self.pieces_frame.pack_forget()
+                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+                
+            # Ensure window is wide enough for records
+            if self.window.winfo_width() < self.records_min_width:
+                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
+
+
     def on_window_configure(self, event):
         """Handle window resize events"""
         # Only handle events from the main window and avoid recursive calls
@@ -1432,38 +1478,6 @@ class ChineseChess:
                 
             finally:
                 self.processing_resize = False
-
-    def toggle_records(self):
-        """Toggle the visibility of the records frame"""
-        self.records_seen = not self.records_seen
-        
-        # Update minimum window size based on records visibility
-        min_width = self.records_min_width if self.records_seen else self.base_min_width
-        self.window.minsize(min_width, self.min_height)
-        
-        # Handle the records frame visibility
-        if self.records_frame.winfo_ismapped():
-            self.records_frame.pack_forget()
-            # Adjust window size if it's too wide
-            current_width = self.window.winfo_width()
-            if current_width > self.base_min_width:
-                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
-                
-            # If in piece setting mode, ensure pieces frame is visible
-            if self.piece_setting_mode and self.pieces_frame:
-                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-        else:
-            # Pack the records frame at the start of main_frame
-            self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
-            
-            # If in piece setting mode and pieces frame exists, repack it
-            if self.piece_setting_mode and self.pieces_frame:
-                self.pieces_frame.pack_forget()
-                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-                
-            # Ensure window is wide enough for records
-            if self.window.winfo_width() < self.records_min_width:
-                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
 
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on

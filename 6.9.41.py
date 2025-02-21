@@ -295,6 +295,9 @@ class ChineseChess:
     def toggle_piece_setting_mode(self):
         """Toggle between normal game mode and piece setting mode"""
         self.piece_setting_mode = not self.piece_setting_mode
+        if self.records_seen == True:
+            self.toggle_records()
+            
         if self.piece_setting_mode == False:
             self.game_over = False
             
@@ -332,7 +335,7 @@ class ChineseChess:
             
             # Force window width to accommodate both records and pieces frames
             current_height = self.window.winfo_height()
-            required_width = max(self.records_min_width + 200, self.window.winfo_width())
+            required_width = max(self.records_min_width + 193, self.window.winfo_width())
             self.window.geometry(f"{required_width}x{current_height}")
             
             # Pack the pieces frame with padding
@@ -340,7 +343,20 @@ class ChineseChess:
             
             # Change button text
             self.set_pieces_button.config(text="完成摆放")
+
         else:
+
+            # Force window width to accommodate both records and pieces frames
+            current_height = self.window.winfo_height()
+            required_width = self.base_min_width
+            self.window.geometry(f"{required_width}x{current_height}")
+            
+            # Pack the pieces frame with padding
+            self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+            
+            # Change button text
+            self.set_pieces_button.config(text="完成摆放")
+            
             self.highlighted_positions = []
             self.draw_board()
 
