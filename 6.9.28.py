@@ -109,7 +109,7 @@ class ChineseChess:
            
         # Set initial minimum sizes
         self.base_min_width = 700  # Base minimum width without records
-        self.records_min_width = 960  # Minimum width with records visible
+        self.records_min_width = 880  # Minimum width with records visible
         self.min_height = 700  # Minimum height (constant)
         
         # Set initial minimum window size
@@ -147,7 +147,7 @@ class ChineseChess:
             self.records_frame,
             font=("SimSun", 12),
             spacing1=3, spacing3=3,
-            width=30,
+            width=20,
             height=25,
             state='disabled'
         )
@@ -1432,9 +1432,19 @@ class ChineseChess:
             current_width = self.window.winfo_width()
             if current_width > self.base_min_width:
                 self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
+                
+            # If in piece setting mode, ensure pieces frame is visible
+            if self.piece_setting_mode and self.pieces_frame:
+                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
         else:
             # Pack the records frame at the start of main_frame
             self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
+            
+            # If in piece setting mode and pieces frame exists, repack it
+            if self.piece_setting_mode and self.pieces_frame:
+                self.pieces_frame.pack_forget()
+                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+                
             # Ensure window is wide enough for records
             if self.window.winfo_width() < self.records_min_width:
                 self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
