@@ -13,7 +13,8 @@ class ChineseChess:
         self.pieces_frame = None
         self.source_canvas = None  # Track which canvas the selected piece is from
         self.records_hidden_by_piece_set = False     
-     
+        self.board_copy = []     
+
         # Replace the available_pieces dictionary with a list of individual pieces
         self.available_pieces = {
             'red': [],
@@ -365,6 +366,7 @@ class ChineseChess:
             
             self.highlighted_positions = []
             self.draw_board()
+            self.board_copy = self.board
 
             if self.flipped:
                 self.window.after(500, self.make_ai_move)
@@ -1624,7 +1626,7 @@ class ChineseChess:
         self.prev_move_button.config(state=tk.DISABLED)
         
         # Reset board to initial state
-        self.initialize_board()
+        self.board = self.board_copy
         self.draw_board()
 
     def next_replay_move(self):

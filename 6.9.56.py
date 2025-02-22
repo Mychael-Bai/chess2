@@ -1624,7 +1624,6 @@ class ChineseChess:
         self.prev_move_button.config(state=tk.DISABLED)
         
         # Reset board to initial state
-        self.initialize_board()
         self.draw_board()
 
     def next_replay_move(self):
