@@ -116,7 +116,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 6.9.83 (ttk button)")
+        self.window.title("Chinese Chess 6.9.83 (all buttons are ttk.Button)")
            
            
         # Set initial minimum sizes
@@ -1595,14 +1595,13 @@ class ChineseChess:
         self.sound_effect_on = not self.sound_effect_on
         self.turn_off_sound_effect.destroy()
 
-        self.turn_off_sound_effect = tk.Button(
+        self.turn_off_sound_effect = ttk.Button(
             self.button_frame,
             
             text="关闭音效" if self.sound_effect_on == True else "打开音效",
             command=self.sound_effect,
-            font=('SimSun', 12),
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
 
