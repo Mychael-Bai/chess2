@@ -1,5 +1,9 @@
 
 import tkinter as tk
+
+from tkinter import ttk
+
+
 import os
 import pygame.mixer
 
@@ -107,7 +111,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.9.63 (everything is ok, light blue records highlight)")
+        self.window.title("Chinese Chess 6.9.51 (no flash when switch color)")
            
            
         # Set initial minimum sizes
@@ -176,28 +180,26 @@ class ChineseChess:
         self.button_frame.pack(side=tk.LEFT, padx=10)  # Add padding between board and button
 
         # Create records button above restart button
-        self.records_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="棋谱记录",
             command=self.toggle_records,
             font=('SimSun', 12),
             width=8,
             height=1
-        )
-        self.records_button.pack(pady=5)
+        ).pack(pady=5)
 
         # Create switch color button
-        self.switch_color_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="红黑对调",
             command=self.switch_colors,
             font=('SimSun', 12),
             width=8,
             height=1
-        )
-        self.switch_color_button.pack(pady=5)
+        ).pack(pady=5)
 
-        self.turn_off_sound_effect = tk.Button(
+        ttk.Button(
             self.button_frame,
             
             text="关闭音效" if self.sound_effect_on == True else "打开音效",
@@ -205,34 +207,31 @@ class ChineseChess:
             font=('SimSun', 12),
             width=8,
             height=1
-        )
-        self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
+        ).pack(pady=5, before=self.records_button)
 
         # Create restart button
         button_size = self.piece_radius * 2  # Same size as a piece
-        self.restart_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="再来一盘",  # Keep the original Chinese text
             command=self.restart_game,
             font=('SimSun', 12),  # Chinese font, size 16
             width=8,
             height=1
-        )
-        self.restart_button.pack(pady=5)
+        ).pack(pady=5)
         
         # Create replay button
-        self.replay_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="复盘",
             command=self.start_replay,
             font=('SimSun', 12),
             width=8,
             height=1
-        )
-        self.replay_button.pack(pady=5)
+        ).pack(pady=5)
 
         # Create previous move button (initially disabled)
-        self.prev_move_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="上一步",
             command=self.prev_replay_move,
@@ -240,11 +239,10 @@ class ChineseChess:
             width=8,
             height=1,
             state=tk.DISABLED
-        )
-        self.prev_move_button.pack(pady=5)
+        ).pack(pady=5)
                                 
         # Create next move button (initially disabled)
-        self.next_move_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="下一步",
             command=self.next_replay_move,
@@ -252,8 +250,7 @@ class ChineseChess:
             width=8,
             height=1,
             state=tk.DISABLED
-        )
-        self.next_move_button.pack(pady=5)
+        ).pack(pady=5)
         self.create_set_pieces_button()
 
 
@@ -272,15 +269,14 @@ class ChineseChess:
 
     def create_set_pieces_button(self):
         # Create set pieces button
-        self.set_pieces_button = tk.Button(
+        ttk.Button(
             self.button_frame,
             text="摆放棋子",
             command=self.toggle_piece_setting_mode,
             font=('SimSun', 12),
             width=8,
             height=1
-        )
-        self.set_pieces_button.pack(pady=5, before=self.turn_off_sound_effect)
+        ).pack(pady=5, before=self.turn_off_sound_effect)
 
     def reset_available_pieces(self):
         """Reset the available pieces to their initial counts"""
@@ -1296,17 +1292,14 @@ class ChineseChess:
 
     def show_centered_warning(self, title, message):
         """Shows a warning messagebox centered on the game board"""
-        # Wait for any pending events to be processed
-        self.window.update_idletasks()
-        
         # Create custom messagebox
-        warn_window = tk.Toplevel()
+        warn_window = tk.Toplevel(self.window)
+        warn_window.withdraw()  # Hide window initially
         warn_window.title(title)
-        warn_window.geometry('300x100')  # Set size of warning window
         
         # Configure the warning window
         warn_window.transient(self.window)
-        warn_window.grab_set()
+        warn_window.protocol("WM_DELETE_WINDOW", lambda: None)  # Disable close button
         
         def on_ok():
             # If it's a checkmate message, add END to records
@@ -1314,57 +1307,53 @@ class ChineseChess:
                 self.move_text.config(state='normal')
                 self.move_text.insert(tk.END, "THE END")
                 self.move_text.config(state='disabled')
-                self.move_text.see(tk.END)  # Scroll to the bottom
-                # Also add END to the records list
+                self.move_text.see(tk.END)
                 self.move_history_records.append("END")
-            
             warn_window.destroy()
         
         # Add message and OK button with custom fonts
-        tk.Label(
-            warn_window, 
-            text=message, 
-            padx=20, 
-            pady=10,
-            font=('SimSun', 12),  # Chinese font, size 16, bold
-            fg='#000000'  # Black text
-        ).pack()
+        frame = ttk.Frame(warn_window, padding="20 10")
+        frame.pack(fill=tk.BOTH, expand=True)
         
-        tk.Button(
-            warn_window, 
-            text="OK", 
-            command=on_ok, 
+        ttk.Label(
+            frame, 
+            text=message,
+            font=('SimSun', 12),
+            wraplength=260
+        ).pack(pady=(0, 10))
+        
+        ttk.Button(
+            frame,
+            text="OK",
+            command=on_ok,
             width=10
-        ).pack(pady=10)
+        ).pack(pady=(0, 10))
         
-        # Wait for the warning window to be ready
+        # Set fixed size
+        warn_window.geometry('300x100')
+        warn_window.resizable(False, False)
+        
+        # Calculate position before showing window
         warn_window.update_idletasks()
         
         # Get the coordinates of the main window and board
         window_x = self.window.winfo_x()
         window_y = self.window.winfo_y()
-        
-        # Calculate the board's center position
         board_x = window_x + self.board_frame.winfo_x() + self.canvas.winfo_x()
         board_y = window_y + self.board_frame.winfo_y() + self.canvas.winfo_y()
-        board_width = self.canvas.winfo_width()
-        board_height = self.canvas.winfo_height()
         
-        # Get the size of the warning window
-        warn_width = warn_window.winfo_width()
-        warn_height = warn_window.winfo_height()
+        # Calculate center position
+        x = board_x + (self.canvas.winfo_width() - warn_window.winfo_width()) // 2
+        y = board_y + (self.canvas.winfo_height() - warn_window.winfo_height()) // 2
         
-        # Calculate the center position
-        x = board_x + (board_width - warn_width) // 2
-        y = board_y + (board_height - warn_height) // 2
-        
-        # Position the warning window
+        # Set position and show window
         warn_window.geometry(f"+{x}+{y}")
+        warn_window.grab_set()  # Set modal state before showing
+        warn_window.deiconify()  # Show the window
+        warn_window.focus_force()  # Force focus
         
-        # Make window modal and wait for it to close
-        warn_window.focus_set()
-        warn_window.wait_window()
-
+        # Wait for window to close
+        self.window.wait_window(warn_window)
 
     def get_piece_position_descriptor(self, from_pos, to_pos, piece):
         """
@@ -1600,7 +1589,7 @@ class ChineseChess:
         self.sound_effect_on = not self.sound_effect_on
         self.turn_off_sound_effect.destroy()
 
-        self.turn_off_sound_effect = tk.Button(
+        ttk.Button(
             self.button_frame,
             
             text="关闭音效" if self.sound_effect_on == True else "打开音效",
@@ -1608,9 +1597,7 @@ class ChineseChess:
             font=('SimSun', 12),
             width=8,
             height=1
-        )
-        self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
-
+        ).pack(pady=5, before=self.records_button)
 
 
     # Add this new method to the ChineseChess class

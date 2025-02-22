@@ -107,7 +107,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.9.63 (everything is ok, light blue records highlight)")
+        self.window.title("Chinese Chess 6.9.51 (no flash when switch color)")
            
            
         # Set initial minimum sizes
@@ -622,6 +622,7 @@ class ChineseChess:
                             
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
+            return
         start_time = time.time()
         max_time = 5.0  # Reduced from 10.0 to make moves faster
                         
@@ -709,16 +710,15 @@ class ChineseChess:
             self.draw_board()
                               
         # Check if the opponent is now in checkmate
+        
+            
+        # After making the move, do a single checkmate check
         if self.is_checkmate(self.current_player):
+            self.game_over = True
             self.handle_game_end()
-                        
-        # Check if the opponent is now in checkmate
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        if not self.is_checkmate(opponent_color):
-            self.game_over = False  # Explicitly set game_over to False if not checkmate
-       
-
-    
+        else:
+            self.game_over = False
+        
     def minimax(self, depth, alpha, beta, maximizing_player):
         """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
         

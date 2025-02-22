@@ -107,7 +107,7 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.9.63 (everything is ok, light blue records highlight)")
+        self.window.title("Chinese Chess 6.9.51 (no flash when switch color)")
            
            
         # Set initial minimum sizes
@@ -511,7 +511,10 @@ class ChineseChess:
 
 
 
+
     def on_click(self, event):
+        opponent_color = 'red' if self.flipped else 'black'
+
 
         if self.piece_setting_mode:
             # Convert click coordinates to board position
@@ -595,9 +598,7 @@ class ChineseChess:
                             self.board[row][col]
                         )
 
-                        # Switch players
-                        self.current_player = 'black' if self.current_player == 'red' else 'red'
-                        self.window.after(500, self.make_ai_move)
+                        
                         # Add this line to record the move
                         self.add_move_to_history(
                             (start_row, start_col),
@@ -610,12 +611,21 @@ class ChineseChess:
                     
                     # Redraw board
                     self.draw_board()
-            
+                    
+                    if self.is_checkmate(opponent_color):
+                        self.game_over = True
+                        self.window.after(500, self.handle_game_end)
+                    
+                    # Switch players
+                    self.current_player = 'black' if self.current_player == 'red' else 'red'
+                    self.window.after(500, self.make_ai_move)
+
             # If no piece is selected and clicked on own piece, select it
             elif clicked_piece and clicked_piece[0] == self.current_player[0].upper():
                 self.selected_piece = (row, col)
                 self.highlighted_positions = [(row, col)]  # Initialize highlights with selected piece
                 self.draw_board()        
+
 
     def make_ai_move(self):
         import time
@@ -707,11 +717,7 @@ class ChineseChess:
 
             # Update display
             self.draw_board()
-                              
-        # Check if the opponent is now in checkmate
-        if self.is_checkmate(self.current_player):
-            self.handle_game_end()
-                        
+                          
         # Check if the opponent is now in checkmate
         opponent_color = 'black' if ai_color == 'red' else 'red'
         if not self.is_checkmate(opponent_color):
