@@ -1304,7 +1304,7 @@ class ChineseChess:
             # If it's a checkmate message, add END to records
             if message == "绝 杀 ！" and self.move_text:
                 self.move_text.config(state='normal')
-                self.move_text.insert(tk.END, "\nEND")
+                self.move_text.insert(tk.END, "THE END")
                 self.move_text.config(state='disabled')
                 self.move_text.see(tk.END)  # Scroll to the bottom
                 # Also add END to the records list
