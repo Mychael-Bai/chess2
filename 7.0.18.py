@@ -116,6 +116,9 @@ class ChineseChess:
 
         self.window = tk.Tk()
         
+        # Add after creating the window in __init__
+        self.window.resizable(False, True)  # Allow only vertical resizing
+        
         # And add this code at the beginning of __init__, after self.window = tk.Tk():
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
@@ -128,14 +131,15 @@ class ChineseChess:
         self.records_min_width = 880  # Minimum width with records visible
         self.min_height = 700  # Minimum height (constant)
         
-        # Set initial minimum window size but don't constrain maximum height
-        self.window.minsize(self.records_min_width, self.min_height)
-        self.window.maxsize(self.records_min_width, 10000)  # Very large max height
-        
-        # Set initial minimum window size
-        self.window.minsize(
-            self.records_min_width, 
-            self.min_height)
+        # Set initial minimum sizes
+        self.base_min_width = 700  # Base minimum width without records
+        self.records_min_width = 880  # Minimum width with records visible
+        self.min_height = 700  # Minimum height
+
+        # Set initial window constraints
+        target_width = self.records_min_width if self.records_seen else self.base_min_width
+        self.window.minsize(target_width, self.min_height)  # Set minimum size
+        self.window.maxsize(target_width, 0)  # Lock width but allow unlimited height
         
         # Add a configure event handler to maintain minimum size
         self.window.bind('<Configure>', self.on_window_configure)
@@ -432,7 +436,9 @@ class ChineseChess:
             # In switch_colors and similar methods, preserve height when setting geometry:
             current_height = self.window.winfo_height()
             target_width = self.records_min_width if self.records_seen else self.base_min_width
-            self.window.geometry(f"{target_width}x{current_height}")
+            
+            if self.window.winfo_width() != target_width:
+                self.window.geometry(f"{target_width}x{self.window.winfo_height()}")
             
             # Pack the pieces frame with padding
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
@@ -448,7 +454,9 @@ class ChineseChess:
             # In switch_colors and similar methods, preserve height when setting geometry:
             current_height = self.window.winfo_height()
             target_width = self.records_min_width if self.records_seen else self.base_min_width
-            self.window.geometry(f"{target_width}x{current_height}")
+
+            if self.window.winfo_width() != target_width:
+                self.window.geometry(f"{target_width}x{self.window.winfo_height()}")
 
             # Pack the pieces frame with padding
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
@@ -1314,7 +1322,9 @@ class ChineseChess:
         # In switch_colors and similar methods, preserve height when setting geometry:
         current_height = self.window.winfo_height()
         target_width = self.records_min_width if self.records_seen else self.base_min_width
-        self.window.geometry(f"{target_width}x{current_height}")
+        
+        if self.window.winfo_width() != target_width:
+            self.window.geometry(f"{target_width}x{self.window.winfo_height()}")
 
     def _create_piece_section(self, frame, color_prefix, canvas_size):
         """Helper function to create piece section within a frame"""
@@ -1652,10 +1662,19 @@ class ChineseChess:
         )
         self.records_button.pack(pady=5, before=self.switch_color_button)
         
+        
         # Update window constraints
         target_width = self.records_min_width if self.records_seen else self.base_min_width
-        self.window.maxsize(target_width, 10000)  # Lock width but allow height
+        current_height = self.window.winfo_height()  # Preserve current height
+        current_width = self.window.winfo_width()
+        
+        # Lock width but allow height changes
+        self.window.maxsize(target_width, 0)  # 0 means unlimited
         self.window.minsize(target_width, self.min_height)
+        
+        # Only set width, keep current height
+        if current_width != target_width:
+            self.window.geometry(f"{target_width}x{current_height}")
         
         # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
@@ -1664,8 +1683,10 @@ class ChineseChess:
             # In switch_colors and similar methods, preserve height when setting geometry:
             current_height = self.window.winfo_height()
             target_width = self.records_min_width if self.records_seen else self.base_min_width
-            self.window.geometry(f"{target_width}x{current_height}")
                 
+            if self.window.winfo_width() != target_width:
+                self.window.geometry(f"{target_width}x{self.window.winfo_height()}")
+        
         else:
             # Pack the records frame and adjust width
             self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
@@ -1673,7 +1694,9 @@ class ChineseChess:
             # In switch_colors and similar methods, preserve height when setting geometry:
             current_height = self.window.winfo_height()
             target_width = self.records_min_width if self.records_seen else self.base_min_width
-            self.window.geometry(f"{target_width}x{current_height}")
+
+            if self.window.winfo_width() != target_width:
+                self.window.geometry(f"{target_width}x{self.window.winfo_height()}")
 
     def on_window_configure(self, event):
         """Handle window resize events"""
@@ -1688,29 +1711,13 @@ class ChineseChess:
                 
                 # Determine correct width based on records visibility
                 target_width = self.records_min_width if self.records_seen else self.base_min_width
-                need_resize = False
-                new_width = target_width  # Always use target width
-                new_height = current_height  # Allow height to be whatever user sets
                 
-                # Only enforce minimum height
-                if current_height < self.min_height:
-                    new_height = self.min_height
-                    need_resize = True
-                
-                # Always enforce exact width
+                # Only enforce width constraint if it differs from target
                 if current_width != target_width:
-                    need_resize = True
-                
-                # Update window size if needed
-                if need_resize:
-                    
-                    # In switch_colors and similar methods, preserve height when setting geometry:
-                    current_height = self.window.winfo_height()
-                    target_width = self.records_min_width if self.records_seen else self.base_min_width
                     self.window.geometry(f"{target_width}x{current_height}")
-
-                # Update window constraints
-                self.window.maxsize(target_width, 10000)  # Lock width but allow height
+                
+                # Update window constraints - only lock width
+                self.window.maxsize(target_width, 0)  # 0 means unlimited
                 self.window.minsize(target_width, self.min_height)
                 
             finally:
