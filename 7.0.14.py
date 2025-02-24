@@ -120,7 +120,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.13 (restart ok even switched color)")
+        self.window.title("Chinese Chess 7.0.08 (restart ok even switched color)")
            
            
         # Set initial minimum sizes

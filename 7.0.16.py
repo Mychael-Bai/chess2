@@ -120,25 +120,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.13 (restart ok even switched color)")
-           
-           
-        # Set initial minimum sizes
-        self.base_min_width = 700  # Base minimum width without records
-        self.records_min_width = 880  # Minimum width with records visible
-        self.min_height = 700  # Minimum height (constant)
-        
-        # Set initial minimum window size
-        self.window.minsize(
-            self.records_min_width, 
-            self.min_height)
-        
-        # Add a configure event handler to maintain minimum size
-        self.window.bind('<Configure>', self.on_window_configure)
-        
-        # Add a flag to track if we're currently processing a resize
-        self.processing_resize = False
-        
+        self.window.title("Chinese Chess 7.0.16 (restart ok even color switched, windowsize ok)")
            
         self.game_history = []  # List to store all games
 
@@ -421,11 +403,6 @@ class ChineseChess:
                 self.pieces_frame.destroy()
                 self.create_pieces_frame()
             
-            # Force window width to accommodate both records and pieces frames
-            current_height = self.window.winfo_height()
-            required_width = max(self.records_min_width + 193, self.window.winfo_width())
-            self.window.geometry(f"{required_width}x{current_height}")
-            
             # Pack the pieces frame with padding
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
             
@@ -434,11 +411,7 @@ class ChineseChess:
 
         else:
 
-            # Force window width to accommodate both records and pieces frames
-            current_height = self.window.winfo_height()
-            required_width = self.base_min_width
-            self.window.geometry(f"{required_width}x{current_height}")
-            
+
             # Pack the pieces frame with padding
             self.pieces_frame.pack(side=tk.RIGHT, padx=15)
             
@@ -1201,9 +1174,7 @@ class ChineseChess:
 
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
-        # Store current window state
-        current_width = self.window.winfo_width()
-        current_height = self.window.winfo_height()
+        
         
         self.flipped = not self.flipped
         
@@ -1302,9 +1273,7 @@ class ChineseChess:
         # Redraw the board
         self.draw_board()
         
-        # Restore window dimensions
-        self.window.geometry(f"{current_width}x{current_height}")
-
+        
     def _create_piece_section(self, frame, color_prefix, canvas_size):
         """Helper function to create piece section within a frame"""
         canvas = tk.Canvas(
@@ -1642,18 +1611,11 @@ class ChineseChess:
         self.records_button.pack(pady=5, before=self.switch_color_button)
 
         
-        # Update minimum window size based on records visibility
-        min_width = self.records_min_width if self.records_seen else self.base_min_width
-        self.window.minsize(min_width, self.min_height)
         
         # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
             self.records_frame.pack_forget()
-            # Adjust window size if it's too wide
-            current_width = self.window.winfo_width()
-            if current_width > self.base_min_width:
-                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
-                
+            
             # If in piece setting mode, ensure pieces frame is visible
             if self.piece_setting_mode and self.pieces_frame:
                 self.pieces_frame.pack(side=tk.RIGHT, padx=15)
@@ -1665,47 +1627,6 @@ class ChineseChess:
             if self.piece_setting_mode and self.pieces_frame:
                 self.pieces_frame.pack_forget()
                 self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-                
-            # Ensure window is wide enough for records
-            if self.window.winfo_width() < self.records_min_width:
-                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
-
-
-    def on_window_configure(self, event):
-        """Handle window resize events"""
-        # Only handle events from the main window and avoid recursive calls
-        if event.widget == self.window and not self.processing_resize:
-            try:
-                self.processing_resize = True
-                
-                # Get current window size
-                current_width = event.width
-                current_height = event.height
-                
-                # Determine minimum width based on records visibility
-                min_width = self.records_min_width if self.records_seen else self.base_min_width
-                need_resize = False
-                new_width = current_width
-                new_height = current_height
-                
-                # Check if current size is below minimum
-                if current_width < min_width:
-                    new_width = min_width
-                    need_resize = True
-                
-                if current_height < self.min_height:
-                    new_height = self.min_height
-                    need_resize = True
-                
-                # Update window size if needed
-                if need_resize:
-                    self.window.geometry(f"{new_width}x{new_height}")
-                
-                # Update minimum size constraint
-                self.window.minsize(min_width, self.min_height)
-                
-            finally:
-                self.processing_resize = False
 
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on
