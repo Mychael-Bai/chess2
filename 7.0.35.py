@@ -2039,7 +2039,6 @@ class ChineseChess:
         )
         
         # Draw pieces on intersections
-
         if self.replay_mode == True:
             if self.current_replay_index > 0 and self.rotate_replay_board[self.current_replay_index - 1]:
 
