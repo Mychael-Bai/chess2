@@ -25,8 +25,6 @@ class ChineseChess:
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
 
-        self.rotate_from_pos = (None, None)
-        self.rotate_to_pos = (None, None)
         self.move_rotate = False
 
         self.rotate_replay_board = []
@@ -612,10 +610,6 @@ class ChineseChess:
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
         
-        
-        self.rotate_from_pos = (None, None)
-        self.rotate_to_pos = (None, None)
-
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
 
@@ -710,23 +704,15 @@ class ChineseChess:
                             self.move_rotate = True
 
                             self.rotate_to_replay()
-                            self.rotate_from_pos = self.rotate_single_highlight[0]
-                            self.rotate_to_pos = self.rotate_single_highlight[1]
+                            (start_row, start_col) = self.rotate_single_highlight[0]
+                            (row, col) = self.rotate_single_highlight[1]
 
-                            # Add this line to record the move
-                            self.add_move_to_history(
-                                self.rotate_from_pos,
-                                self.rotate_to_pos,
-                                self.board[row][col]
-                            )
-                        else:
-
-                            # Add this line to record the move
-                            self.add_move_to_history(
-                                (start_row, start_col),
-                                (row, col),
-                                self.board[row][col]
-                            )
+                        # Add this line to record the move
+                        self.add_move_to_history(
+                            (start_row, start_col),
+                            (row, col),
+                            self.board[row][col]
+                        )
 
                     # Reset selected piece
                     self.selected_piece = None
@@ -745,9 +731,6 @@ class ChineseChess:
         
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
-        
-        self.rotate_from_pos = (None, None)
-        self.rotate_to_pos = (None, None)
         
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
@@ -839,19 +822,11 @@ class ChineseChess:
                 self.move_rotate = True
 
                 self.rotate_to_replay()
-                self.rotate_from_pos = self.rotate_single_highlight[0]
-                self.rotate_to_pos = self.rotate_single_highlight[1]
+                from_pos = self.rotate_single_highlight[0]
+                to_pos = self.rotate_single_highlight[1]
 
-                # Add this line to record the move
-                self.add_move_to_history(
-                    self.rotate_from_pos,
-                    self.rotate_to_pos,
-                    best_moving_piece
-                )
-            else:
-                    
-                # Add this line to record the AI move
-                self.add_move_to_history(from_pos, to_pos, best_moving_piece)
+            # Add this line to record the AI move
+            self.add_move_to_history(from_pos, to_pos, best_moving_piece)
 
             # Update display
             self.draw_board()
