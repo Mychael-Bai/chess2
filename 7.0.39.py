@@ -1,5 +1,9 @@
 
 import tkinter as tk
+
+from tkinter import ttk
+
+
 import os
 import pygame.mixer
 
@@ -13,7 +17,23 @@ class ChineseChess:
         self.pieces_frame = None
         self.source_canvas = None  # Track which canvas the selected piece is from
         self.records_hidden_by_piece_set = False     
-     
+        self.board_copy = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
+        self.copy_switch_board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
+        
+        self.check_rotate = False
+
+        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
+        self.rotate_single_highlight = []
+
+        self.move_rotate = False
+
+        self.rotate_replay_board = []
+        
+        self.board_copy_restart = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy        
+        self.restart_state = False
+        self.set_pieces_mode = False
+        self.new_game_state = False
+        
         # Replace the available_pieces dictionary with a list of individual pieces
         self.available_pieces = {
             'red': [],
@@ -52,7 +72,6 @@ class ChineseChess:
                 'instance_id': f"{piece}_{row}_{col}"
             })
 
-
      
         # Add this before other initializations
         self.piece_attributes = {
@@ -74,7 +93,6 @@ class ChineseChess:
         self.move_history = []  # List to store moves for current game
         self.move_history_records = []
         self.records_seen = False
-
         
         self.replay_mode = False
         self.current_replay_index = 0
@@ -104,25 +122,12 @@ class ChineseChess:
             self.move_sound = None
 
         self.window = tk.Tk()
-        self.window.title("Chinese Chess 6.9.51 (no flash when switch color)")
-           
-           
-        # Set initial minimum sizes
-        self.base_min_width = 700  # Base minimum width without records
-        self.records_min_width = 880  # Minimum width with records visible
-        self.min_height = 700  # Minimum height (constant)
         
-        # Set initial minimum window size
-        self.window.minsize(
-            self.records_min_width, 
-            self.min_height)
+        # And add this code at the beginning of __init__, after self.window = tk.Tk():
+        style = ttk.Style()
+        style.configure('Custom.TButton', font=('SimSun', 12))
         
-        # Add a configure event handler to maintain minimum size
-        self.window.bind('<Configure>', self.on_window_configure)
-        
-        # Add a flag to track if we're currently processing a resize
-        self.processing_resize = False
-        
+        self.window.title("Chinese Chess 7.0.37 (functionality the same as 7.0.35, with diffent realization method)")
            
         self.game_history = []  # List to store all games
 
@@ -137,7 +142,7 @@ class ChineseChess:
         
         # Create main horizontal frame to hold board and button side by side
         self.main_frame = tk.Frame(self.window)
-        self.main_frame.pack(pady=20, padx=5)
+        self.main_frame.pack(pady=20, padx=10)
         
         # Create the records frame but don't pack it yet
         self.records_frame = tk.Frame(self.main_frame)
@@ -172,87 +177,98 @@ class ChineseChess:
         self.button_frame = tk.Frame(self.main_frame)
         self.button_frame.pack(side=tk.LEFT, padx=10)  # Add padding between board and button
 
-        # Create records button above restart button
-        self.records_button = tk.Button(
+
+        self.records_button = ttk.Button(
             self.button_frame,
             text="棋谱记录",
             command=self.toggle_records,
-            font=('SimSun', 12),
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.records_button.pack(pady=5)
 
+
         # Create switch color button
-        self.switch_color_button = tk.Button(
+        self.switch_color_button = ttk.Button(
             self.button_frame,
             text="红黑对调",
             command=self.switch_colors,
-            font=('SimSun', 12),
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.switch_color_button.pack(pady=5)
 
-        self.turn_off_sound_effect = tk.Button(
+        self.turn_off_sound_effect = ttk.Button(
             self.button_frame,
             
             text="关闭音效" if self.sound_effect_on == True else "打开音效",
             command=self.sound_effect,
-            font=('SimSun', 12),
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
 
+        self.new_game_button = ttk.Button(
+            self.button_frame,
+            text="重新开始",
+            command=self.start_new_game,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.new_game_button.pack(pady=5, before=self.turn_off_sound_effect)
+
         # Create restart button
-        button_size = self.piece_radius * 2  # Same size as a piece
-        self.restart_button = tk.Button(
+        self.restart_button = ttk.Button(
             self.button_frame,
             text="再来一盘",  # Keep the original Chinese text
             command=self.restart_game,
-            font=('SimSun', 12),  # Chinese font, size 16
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.restart_button.pack(pady=5)
         
         # Create replay button
-        self.replay_button = tk.Button(
+        self.replay_button = ttk.Button(
             self.button_frame,
             text="复盘",
             command=self.start_replay,
-            font=('SimSun', 12),
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.replay_button.pack(pady=5)
 
         # Create previous move button (initially disabled)
-        self.prev_move_button = tk.Button(
+        self.prev_move_button = ttk.Button(
             self.button_frame,
             text="上一步",
             command=self.prev_replay_move,
-            font=('SimSun', 12),
             width=8,
-            height=1,
+            style='Custom.TButton',
             state=tk.DISABLED
         )
         self.prev_move_button.pack(pady=5)
                                 
         # Create next move button (initially disabled)
-        self.next_move_button = tk.Button(
+        self.next_move_button = ttk.Button(
             self.button_frame,
             text="下一步",
             command=self.next_replay_move,
-            font=('SimSun', 12),
             width=8,
-            height=1,
+            style='Custom.TButton',
             state=tk.DISABLED
         )
         self.next_move_button.pack(pady=5)
-        self.create_set_pieces_button()
 
+        
+        # Create set pieces button
+        self.set_pieces_button = ttk.Button(
+            self.button_frame,
+            text="摆放棋子" if self.set_pieces_mode == False else "完成摆放",
+            command=self.toggle_piece_setting_mode,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.set_pieces_button.pack(pady=5, before=self.new_game_button)
 
         self.set_button_states_for_gameplay()
 
@@ -267,17 +283,95 @@ class ChineseChess:
         self.canvas.bind('<Button-1>', self.on_click)
 
 
-    def create_set_pieces_button(self):
-        # Create set pieces button
-        self.set_pieces_button = tk.Button(
+
+    def rotate_to_replay(self):
+        """Switch the board orientation by rotating it 180 degrees"""
+       
+        # Clear the board
+        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
+        # Rotate pieces 180 degrees
+        for row in range(10):
+            for col in range(9):
+                if self.board[row][col]:
+                    new_row = 9 - row
+                    new_col = 8 - col
+                    self.rotate_board[new_row][new_col] = self.board[row][col]
+        
+        
+        # Rotate highlighted positions
+        self.rotate_single_highlight = []
+        for pos in self.highlighted_positions:
+            if pos:
+                row, col = pos
+
+                new_row = 9 - row
+                new_col = 8 - col
+
+                self.rotate_single_highlight.append((new_row, new_col))
+        
+        # Update selected piece position if any
+        rotate_piece = (None, None)
+        if self.selected_piece:
+            row, col = self.selected_piece
+            rotate_piece = (9 - row, 8 - col)
+        
+
+    def start_new_game(self):
+
+        
+        self.check_rotate = False
+        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
+        self.rotate_single_highlight = []
+        self.rotate_replay_board = []
+        
+
+        self.switch_color_button.config(state=tk.NORMAL)
+        self.new_game_button.destroy()
+        self.new_game_button = ttk.Button(
             self.button_frame,
-            text="摆放棋子",
-            command=self.toggle_piece_setting_mode,
-            font=('SimSun', 12),
+            text="重新开始",
+            command=self.start_new_game,
             width=8,
-            height=1
+            style='Custom.TButton'
         )
-        self.set_pieces_button.pack(pady=5, before=self.turn_off_sound_effect)
+        self.new_game_button.pack(pady=5, before=self.turn_off_sound_effect)
+
+        self.new_game_state = True
+            
+        # Store the current game's move history if it exists
+        if self.move_history:
+            self.game_history.append(self.move_history)
+        self.move_history = []
+        self.move_history_records = []  # Clear the records list
+        
+        # Reset game state
+        self.selected_piece = None
+        self.highlighted_positions = []
+        self.current_player = 'red'
+        self.replay_mode = False
+        self.current_replay_index = 0            
+        self.game_over = False
+                    
+        # Set button states for normal gameplay
+        self.set_button_states_for_gameplay()
+                
+        # Clear the records display
+        if self.move_text:
+            self.move_text.config(state='normal')
+            self.move_text.delete('1.0', tk.END)
+            self.move_text.config(state='disabled')
+        
+        # Reinitialize the board
+        self.initialize_board()
+        self.draw_board()
+        self.board_copy_restart = [row[:] for row in self.board]
+
+        # If the board is flipped, set current player to red and trigger immediate AI move
+        if self.flipped:
+            self.current_player = 'red'  # Set to red so AI plays as red
+            self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
+
+
 
     def reset_available_pieces(self):
         """Reset the available pieces to their initial counts"""
@@ -295,6 +389,24 @@ class ChineseChess:
     def toggle_piece_setting_mode(self):
         """Toggle between normal game mode and piece setting mode"""
         self.piece_setting_mode = not self.piece_setting_mode
+        self.restart_state = False
+        self.replay_mode = False
+        self.prev_move_button.config(state=tk.DISABLED)
+        self.next_move_button.config(state=tk.DISABLED)
+
+        self.set_pieces_button.destroy()
+        
+        # Create set pieces button
+        self.set_pieces_button = ttk.Button(
+            self.button_frame,
+            text="摆放棋子" if self.set_pieces_mode == False else "完成摆放",
+            command=self.toggle_piece_setting_mode,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.set_pieces_button.pack(pady=5, before=self.new_game_button)
+
+        
         if self.records_seen == True and self.piece_setting_mode == True:
             self.toggle_records()
             self.records_hidden_by_piece_set = True
@@ -305,7 +417,6 @@ class ChineseChess:
         if self.piece_setting_mode == False:
             
             self.game_over = False
-            self.replay_mode = False
 
             # Store the current game's move history if it exists
             if self.move_history:
@@ -339,33 +450,21 @@ class ChineseChess:
                 self.pieces_frame.destroy()
                 self.create_pieces_frame()
             
-            # Force window width to accommodate both records and pieces frames
-            current_height = self.window.winfo_height()
-            required_width = max(self.records_min_width + 193, self.window.winfo_width())
-            self.window.geometry(f"{required_width}x{current_height}")
-            
             # Pack the pieces frame with padding
-            self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+            self.pieces_frame.pack(side=tk.RIGHT, padx=5)
             
             # Change button text
             self.set_pieces_button.config(text="完成摆放")
 
         else:
-
-            # Force window width to accommodate both records and pieces frames
-            current_height = self.window.winfo_height()
-            required_width = self.base_min_width
-            self.window.geometry(f"{required_width}x{current_height}")
-            
             # Pack the pieces frame with padding
-            self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-            
-            # Change button text
-            self.set_pieces_button.config(text="完成摆放")
+            self.pieces_frame.pack(side=tk.RIGHT, padx=5)
             
             self.highlighted_positions = []
             self.draw_board()
 
+            self.switch_color_button.config(state=tk.NORMAL)
+            
             if self.flipped:
                 self.window.after(500, self.make_ai_move)
                 
@@ -507,6 +606,13 @@ class ChineseChess:
 
     def on_click(self, event):
 
+        
+        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
+        self.rotate_single_highlight = []
+        
+        if len(self.move_history) == 0:
+            self.board_copy = [row[:] for row in self.board]
+
         if self.piece_setting_mode:
             # Convert click coordinates to board position
             col = round((event.x - self.board_margin) / self.cell_size)
@@ -592,6 +698,7 @@ class ChineseChess:
                         # Switch players
                         self.current_player = 'black' if self.current_player == 'red' else 'red'
                         self.window.after(500, self.make_ai_move)
+
                         # Add this line to record the move
                         self.add_move_to_history(
                             (start_row, start_col),
@@ -613,6 +720,12 @@ class ChineseChess:
 
     def make_ai_move(self):
         import time
+        
+        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
+        self.rotate_single_highlight = []
+        
+        if len(self.move_history) == 0:
+            self.board_copy = [row[:] for row in self.board]
                             
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
@@ -695,7 +808,7 @@ class ChineseChess:
 
             # Switch to opponent's turn
             self.current_player = opponent_color
-                        
+            
             # Add this line to record the AI move
             self.add_move_to_history(from_pos, to_pos, best_moving_piece)
 
@@ -1114,12 +1227,24 @@ class ChineseChess:
 
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
-        # Store current window state
-        current_width = self.window.winfo_width()
-        current_height = self.window.winfo_height()
         
         self.flipped = not self.flipped
         
+        if len(self.move_history) > 0:
+            self.check_rotate = not self.check_rotate
+            
+        self.switch_color_button.destroy()
+        
+        # Create switch color button
+        self.switch_color_button = ttk.Button(
+            self.button_frame,
+            text="红黑对调",
+            command=self.switch_colors,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.switch_color_button.pack(pady=5, before=self.restart_button)
+
         # Store current board state
         current_state = [row[:] for row in self.board]
         current_highlights = self.highlighted_positions[:]
@@ -1134,7 +1259,20 @@ class ChineseChess:
                     new_row = 9 - row
                     new_col = 8 - col
                     self.board[new_row][new_col] = current_state[row][col]
+                    
+        self.copy_switch_board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
+
+        # Rotate original pieces 180 degrees
+        for row in range(10):
+            for col in range(9):
+                if self.board_copy[row][col]:
+                    new_row = 9 - row
+                    new_col = 8 - col
+                    self.copy_switch_board[new_row][new_col] = self.board_copy[row][col]
         
+        self.board_copy = [[None for _ in range(9)] for _ in range(10)]
+        self.board_copy = [row[:] for row in self.copy_switch_board]
+
         # Rotate highlighted positions
         self.highlighted_positions = []
         for pos in current_highlights:
@@ -1176,22 +1314,22 @@ class ChineseChess:
                     self.black_canvas = self._create_piece_section(top_frame, 'B', piece_canvas_size)
                     self.red_canvas = self._create_piece_section(bottom_frame, 'R', piece_canvas_size)
         else:
-            # Update current player and trigger AI move if needed
-            if self.flipped:
-                self.current_player = 'red'
-                if not self.is_checkmate('red') and not self.is_checkmate('black'):
-                    self.window.after(100, self.make_ai_move)
-            else:
-                self.current_player = 'black'
-                if not self.is_checkmate('red') and not self.is_checkmate('black'):
-                    self.window.after(100, self.make_ai_move)
-        
+            if not self.replay_mode:
+                
+                # Update current player and trigger AI move if needed
+                if self.flipped:
+                    self.current_player = 'red'
+                    if not self.is_checkmate('red') and not self.is_checkmate('black'):
+                        self.window.after(100, self.make_ai_move)
+                else:
+                    self.current_player = 'black'
+                    if not self.is_checkmate('red') and not self.is_checkmate('black'):
+                        self.window.after(100, self.make_ai_move)
+            
         # Redraw the board
         self.draw_board()
         
-        # Restore window dimensions
-        self.window.geometry(f"{current_width}x{current_height}")
-
+        
     def _create_piece_section(self, frame, color_prefix, canvas_size):
         """Helper function to create piece section within a frame"""
         canvas = tk.Canvas(
@@ -1278,29 +1416,27 @@ class ChineseChess:
 
     def add_move_to_history(self, from_pos, to_pos, piece):
         """Record a move and board state"""
+        
         move = {
             'from_pos': from_pos,
             'to_pos': to_pos,
             'piece': piece,
             'board_state': [row[:] for row in self.board]  # Deep copy of board
         }
+
+
         self.move_history.append(move)
-
-
 
     def show_centered_warning(self, title, message):
         """Shows a warning messagebox centered on the game board"""
-        # Wait for any pending events to be processed
-        self.window.update_idletasks()
-        
         # Create custom messagebox
-        warn_window = tk.Toplevel()
+        warn_window = tk.Toplevel(self.window)
+        warn_window.withdraw()  # Hide window initially
         warn_window.title(title)
-        warn_window.geometry('300x100')  # Set size of warning window
         
         # Configure the warning window
         warn_window.transient(self.window)
-        warn_window.grab_set()
+        warn_window.protocol("WM_DELETE_WINDOW", lambda: None)  # Disable close button
         
         def on_ok():
             # If it's a checkmate message, add END to records
@@ -1308,57 +1444,53 @@ class ChineseChess:
                 self.move_text.config(state='normal')
                 self.move_text.insert(tk.END, "THE END")
                 self.move_text.config(state='disabled')
-                self.move_text.see(tk.END)  # Scroll to the bottom
-                # Also add END to the records list
+                self.move_text.see(tk.END)
                 self.move_history_records.append("END")
-            
             warn_window.destroy()
         
         # Add message and OK button with custom fonts
-        tk.Label(
-            warn_window, 
-            text=message, 
-            padx=20, 
-            pady=10,
-            font=('SimSun', 12),  # Chinese font, size 16, bold
-            fg='#000000'  # Black text
-        ).pack()
+        frame = ttk.Frame(warn_window, padding="20 10")
+        frame.pack(fill=tk.BOTH, expand=True)
         
-        tk.Button(
-            warn_window, 
-            text="OK", 
-            command=on_ok, 
+        ttk.Label(
+            frame, 
+            text=message,
+            font=('SimSun', 12),
+            wraplength=260
+        ).pack(pady=(0, 10))
+        
+        ttk.Button(
+            frame,
+            text="OK",
+            command=on_ok,
             width=10
-        ).pack(pady=10)
+        ).pack(pady=(0, 10))
         
-        # Wait for the warning window to be ready
+        # Set fixed size
+        warn_window.geometry('300x100')
+        warn_window.resizable(False, False)
+        
+        # Calculate position before showing window
         warn_window.update_idletasks()
         
         # Get the coordinates of the main window and board
         window_x = self.window.winfo_x()
         window_y = self.window.winfo_y()
-        
-        # Calculate the board's center position
         board_x = window_x + self.board_frame.winfo_x() + self.canvas.winfo_x()
         board_y = window_y + self.board_frame.winfo_y() + self.canvas.winfo_y()
-        board_width = self.canvas.winfo_width()
-        board_height = self.canvas.winfo_height()
         
-        # Get the size of the warning window
-        warn_width = warn_window.winfo_width()
-        warn_height = warn_window.winfo_height()
+        # Calculate center position
+        x = board_x + (self.canvas.winfo_width() - warn_window.winfo_width()) // 2
+        y = board_y + (self.canvas.winfo_height() - warn_window.winfo_height()) // 2
         
-        # Calculate the center position
-        x = board_x + (board_width - warn_width) // 2
-        y = board_y + (board_height - warn_height) // 2
-        
-        # Position the warning window
+        # Set position and show window
         warn_window.geometry(f"+{x}+{y}")
+        warn_window.grab_set()  # Set modal state before showing
+        warn_window.deiconify()  # Show the window
+        warn_window.focus_force()  # Force focus
         
-        # Make window modal and wait for it to close
-        warn_window.focus_set()
-        warn_window.wait_window()
-
+        # Wait for window to close
+        self.window.wait_window(warn_window)
 
     def get_piece_position_descriptor(self, from_pos, to_pos, piece):
         """
@@ -1524,22 +1656,26 @@ class ChineseChess:
     def toggle_records(self):
         """Toggle the visibility of the records frame"""
         self.records_seen = not self.records_seen
+        self.records_button.destroy()
         
-        # Update minimum window size based on records visibility
-        min_width = self.records_min_width if self.records_seen else self.base_min_width
-        self.window.minsize(min_width, self.min_height)
+        self.records_button = ttk.Button(
+            self.button_frame,
+            text="棋谱记录",
+            command=self.toggle_records,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.records_button.pack(pady=5, before=self.switch_color_button)
+
+        
         
         # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
             self.records_frame.pack_forget()
-            # Adjust window size if it's too wide
-            current_width = self.window.winfo_width()
-            if current_width > self.base_min_width:
-                self.window.geometry(f"{self.base_min_width}x{self.window.winfo_height()}")
-                
+            
             # If in piece setting mode, ensure pieces frame is visible
             if self.piece_setting_mode and self.pieces_frame:
-                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
+                self.pieces_frame.pack(side=tk.RIGHT, padx=10)
         else:
             # Pack the records frame at the start of main_frame
             self.records_frame.pack(side=tk.LEFT, before=self.board_frame, padx=10)
@@ -1547,87 +1683,49 @@ class ChineseChess:
             # If in piece setting mode and pieces frame exists, repack it
             if self.piece_setting_mode and self.pieces_frame:
                 self.pieces_frame.pack_forget()
-                self.pieces_frame.pack(side=tk.RIGHT, padx=15)
-                
-            # Ensure window is wide enough for records
-            if self.window.winfo_width() < self.records_min_width:
-                self.window.geometry(f"{self.records_min_width}x{self.window.winfo_height()}")
-
-
-    def on_window_configure(self, event):
-        """Handle window resize events"""
-        # Only handle events from the main window and avoid recursive calls
-        if event.widget == self.window and not self.processing_resize:
-            try:
-                self.processing_resize = True
-                
-                # Get current window size
-                current_width = event.width
-                current_height = event.height
-                
-                # Determine minimum width based on records visibility
-                min_width = self.records_min_width if self.records_seen else self.base_min_width
-                need_resize = False
-                new_width = current_width
-                new_height = current_height
-                
-                # Check if current size is below minimum
-                if current_width < min_width:
-                    new_width = min_width
-                    need_resize = True
-                
-                if current_height < self.min_height:
-                    new_height = self.min_height
-                    need_resize = True
-                
-                # Update window size if needed
-                if need_resize:
-                    self.window.geometry(f"{new_width}x{new_height}")
-                
-                # Update minimum size constraint
-                self.window.minsize(min_width, self.min_height)
-                
-            finally:
-                self.processing_resize = False
+                self.pieces_frame.pack(side=tk.RIGHT, padx=10)
 
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on
         self.turn_off_sound_effect.destroy()
 
-        self.turn_off_sound_effect = tk.Button(
+        self.turn_off_sound_effect = ttk.Button(
             self.button_frame,
             
             text="关闭音效" if self.sound_effect_on == True else "打开音效",
             command=self.sound_effect,
-            font=('SimSun', 12),
             width=8,
-            height=1
+            style='Custom.TButton'
         )
         self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
 
 
-    def start_replay(self):
 
-
-        """Start replay mode"""
-        if not self.move_history:
-            self.show_centered_warning("提示", "没有可以回放的历史记录")
-            return
+    # Add this new method to the ChineseChess class
+    def highlight_current_move(self, move_index):
+        """Highlight the current move in the records display"""
+        if self.move_text:
+            # Clear any existing highlights
+            self.move_text.tag_remove('highlight', '1.0', tk.END)
             
-        self.replay_mode = True
-        self.current_replay_index = 0
-        self.highlighted_positions = []  # Clear all highlights
+            if 0 <= move_index < len(self.move_history_records):
+                # Calculate the line number (1-based index)
+                line_number = move_index + 1
+                
+                # Create position strings for the start and end of the line
+                start_pos = f"{line_number}.0"
+                end_pos = f"{line_number + 1}.0"
+                
+                # Add highlight tag to the current move line
+                self.move_text.tag_add('highlight', start_pos, end_pos)
+                
+                # Configure the highlight tag with blue background
+                self.move_text.tag_configure('highlight', background='light blue')
+                
+                # Make sure the highlighted line is visible
+                self.move_text.see(start_pos)
 
-        # Disable normal game buttons during replay
-        self.replay_button.config(state=tk.DISABLED)
-        self.next_move_button.config(state=tk.NORMAL)
-        self.prev_move_button.config(state=tk.DISABLED)
-        
-        # Reset board to initial state
-        
-        
-        self.draw_board()
-
+    # Modify the next_replay_move method to include the highlighting
     def next_replay_move(self):
         """Show next move in replay"""
         if not self.replay_mode or self.current_replay_index >= len(self.move_history):
@@ -1641,17 +1739,45 @@ class ChineseChess:
         
         # Highlight the move
         self.highlighted_positions = [move['from_pos'], move['to_pos']]
+        
+        # Highlight the corresponding move in the records
+        self.highlight_current_move(self.current_replay_index)
+        
         self.current_replay_index += 1
         
         # Enable previous button as we're not at the start
         self.prev_move_button.config(state=tk.NORMAL)
         
-        # If last move
-        if self.current_replay_index >= len(self.move_history):
-            self.next_move_button.config(state=tk.DISABLED)
+        if self.current_replay_index == len(self.move_history):
+
+            self.next_move_button.destroy()
+            # Create next move button (initially disabled)
+            self.next_move_button = ttk.Button(
+                self.button_frame,
+                text="下一步",
+                command=self.next_replay_move,
+                width=8,
+                style='Custom.TButton',
+                state=tk.DISABLED
+            )
+            self.next_move_button.pack(pady=5)
+
+        elif self.current_replay_index < len(self.move_history):
+            
+            self.next_move_button.destroy()
+            # Create next move button (initially disabled)
+            self.next_move_button = ttk.Button(
+                self.button_frame,
+                text="下一步",
+                command=self.next_replay_move,
+                width=8,
+                style='Custom.TButton',
+            )
+            self.next_move_button.pack(pady=5)
         
         self.draw_board()
 
+    # Also modify the prev_replay_move method to update the highlighting
     def prev_replay_move(self):
         """Show previous move in replay"""
         if not self.replay_mode or self.current_replay_index <= 0:
@@ -1662,7 +1788,41 @@ class ChineseChess:
         # If at the beginning, disable prev button
         if self.current_replay_index == 0:
             self.prev_move_button.config(state=tk.DISABLED)
+            
+            # Clear highlight when at start
+            if self.move_text:
+                self.move_text.tag_remove('highlight', '1.0', tk.END)
+        else:
+            # Highlight the corresponding move in the records
+            self.highlight_current_move(self.current_replay_index - 1)
         
+        if self.current_replay_index > 0:
+
+            self.prev_move_button.destroy()
+            # Create previous move button (initially disabled)
+            self.prev_move_button = ttk.Button(
+                self.button_frame,
+                text="上一步",
+                command=self.prev_replay_move,
+                width=8,
+                style='Custom.TButton',
+            )
+            self.prev_move_button.pack(pady=5, before=self.next_move_button)
+
+        elif self.current_replay_index == 0:
+            
+            self.prev_move_button.destroy()
+            # Create previous move button (initially disabled)
+            self.prev_move_button = ttk.Button(
+                self.button_frame,
+                text="上一步",
+                command=self.prev_replay_move,
+                width=8,
+                style='Custom.TButton',
+                state=tk.DISABLED
+            )
+            self.prev_move_button.pack(pady=5, before=self.next_move_button)
+
         # Always enable next button when we go back
         self.next_move_button.config(state=tk.NORMAL)
         
@@ -1674,7 +1834,10 @@ class ChineseChess:
                 self.board[i] = move['board_state'][i][:]
         else:
             # If we're at the beginning, show initial board
-            self.initialize_board()
+                
+            self.board = [row[:] for row in self.board_copy]
+            self.draw_board()
+
         
         # Update highlights if not at the beginning
         if self.current_replay_index > 0:
@@ -1683,6 +1846,43 @@ class ChineseChess:
         else:
             self.highlighted_positions = []
         
+        self.draw_board()
+
+    # Modify the start_replay method to clear any existing highlights
+    def start_replay(self):
+        """Start replay mode"""
+
+        if not self.move_history:
+            self.show_centered_warning("提示", "没有可以回放的历史记录")
+            return
+            
+        self.replay_button.destroy()
+        
+        # Create replay button
+        self.replay_button = ttk.Button(
+            self.button_frame,
+            text="复盘",
+            command=self.start_replay,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.replay_button.pack(pady=5, before=self.prev_move_button)
+
+            
+        self.replay_mode = True
+        self.current_replay_index = 0
+        self.highlighted_positions = []  # Clear all highlights
+        
+        # Clear any existing text highlights
+        if self.move_text:
+            self.move_text.tag_remove('highlight', '1.0', tk.END)
+
+        # Disable normal game buttons during replay
+        self.replay_button.config(state=tk.DISABLED)
+        self.next_move_button.config(state=tk.NORMAL)
+        self.prev_move_button.config(state=tk.DISABLED)
+        
+        self.board = [row[:] for row in self.board_copy]
         self.draw_board()
 
     def end_replay(self):
@@ -1742,6 +1942,7 @@ class ChineseChess:
             for pos, piece in black_pieces.items():
                 row, col = pos
                 self.board[9 - row][col] = piece
+
 
     def draw_board(self):
         # Clear canvas
@@ -1886,8 +2087,30 @@ class ChineseChess:
                 font=('Arial', 12)
             )
 
+
     def restart_game(self):
 
+        
+        self.check_rotate = False
+        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
+        self.rotate_single_highlight = []
+        self.rotate_replay_board = []
+        
+        
+        self.switch_color_button.config(state=tk.NORMAL)
+        self.restart_button.destroy()
+        # Create restart button
+        self.restart_button = ttk.Button(
+            self.button_frame,
+            text="再来一盘",  # Keep the original Chinese text
+            command=self.restart_game,
+            width=8,
+            style='Custom.TButton'
+        )
+        self.restart_button.pack(pady=5, before=self.replay_button)
+
+        self.restart_state = True
+            
         # Store the current game's move history if it exists
         if self.move_history:
             self.game_history.append(self.move_history)
@@ -1911,8 +2134,7 @@ class ChineseChess:
             self.move_text.delete('1.0', tk.END)
             self.move_text.config(state='disabled')
         
-        # Reinitialize the board
-        self.initialize_board()
+        self.board = [row[:] for row in self.board_copy]
         self.draw_board()
 
         # If the board is flipped, set current player to red and trigger immediate AI move
