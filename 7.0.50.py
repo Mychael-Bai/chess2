@@ -135,7 +135,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.48 (the replay length of move history is ok)")
+        self.window.title("Chinese Chess 7.0.47 (the replay length of move history is ok)")
            
         self.game_history = []  # List to store all games
 
@@ -584,6 +584,7 @@ class ChineseChess:
             self.black_canvas = create_piece_section(top_frame, 'B')
             self.red_canvas = create_piece_section(bottom_frame, 'R')
 
+
     def select_piece_from_canvas(self, event, canvas, instance_id, piece):
         """Handle piece selection from the pieces canvas"""
         # Clear previous highlights from all canvases
@@ -617,6 +618,7 @@ class ChineseChess:
                 tags='highlight'
             )
 
+
     def select_piece_to_place(self, piece):
         """Handle piece selection for placement"""
         self.piece_to_place = piece
@@ -641,25 +643,35 @@ class ChineseChess:
             col = round((event.x - self.board_margin) / self.cell_size)
             row = round((event.y - self.board_margin) / self.cell_size)
             
-            # Ensure click is within board bounds
-            if 0 <= row < 10 and 0 <= col < 9 and self.piece_to_place:
-                # Place the piece
-                self.board[row][col] = self.piece_to_place
-                
-                # Remove the piece from the canvas
-                if self.source_canvas and self.selected_instance_id:
-                    # Delete the piece and its highlight
-                    self.source_canvas.delete(self.selected_instance_id)
-                    self.source_canvas.delete('highlight')
-                    
-                self.highlighted_positions = [(row, col)]
-                self.draw_board()
-                
-                # Reset selection
-                self.piece_to_place = None
-                self.selected_instance_id = None
-                return
-
+            # First check if we clicked within the board bounds
+            if 0 <= row < 10 and 0 <= col < 9:
+                if self.piece_to_place and self.source_canvas:  # If we have a piece selected from the side panel
+                    # Place the new piece
+                    self.board[row][col] = self.piece_to_place
+                    self.highlighted_positions = [(row, col)]
+                    self.draw_board()
+                    # Do NOT delete the piece from the source canvas
+                    self.source_canvas.delete('highlight')  # Just clear the highlight
+                    self.piece_to_place = None
+                    self.selected_instance_id = None
+                else:  # If we're picking up an existing piece from the board
+                    piece = self.board[row][col]
+                    if piece:
+                        # Store the piece and clear its position
+                        self.piece_to_place = piece
+                        self.board[row][col] = None
+                        self.highlighted_positions = []
+                        self.draw_board()
+            else:
+                # If clicked outside the board and we have a piece selected,
+                # check if we're near either canvas to return the piece
+                if self.piece_to_place:
+                    self.piece_to_place = None
+                    self.source_canvas.delete('highlight') if self.source_canvas else None
+                    self.source_canvas = None
+                    self.selected_instance_id = None
+                    self.draw_board()
+            return  # Exit the function early to prevent normal game logic
 
         if self.replay_mode or self.game_over:  # Add game_over check
             return  # Ignore clicks when game is over or in replay mode
