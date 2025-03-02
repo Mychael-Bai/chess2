@@ -20,6 +20,11 @@ class ChineseChess:
         self.board_copy = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         self.copy_switch_board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         
+        self.start_replay_numbers = []
+        
+        self.rotate_move_history = []
+        self.rotate_move_history_numbers = []
+        
         self.check_rotate = False
         self.move_history_numbers = []
         self.history_top_numbers = []
@@ -718,7 +723,6 @@ class ChineseChess:
 
                         self.move_rotate = False
                         if self.check_rotate == True:
-
 
                             self.move_rotate = True
 
@@ -1804,7 +1808,7 @@ class ChineseChess:
         # Restore board state
         for i in range(len(self.board)):
             self.board[i] = move['board_state'][i][:]
-        
+    
         # Highlight the move
         self.highlighted_positions = [move['from_pos'], move['to_pos']]
         
@@ -1945,12 +1949,10 @@ class ChineseChess:
         )
         self.replay_button.pack(pady=5, before=self.prev_move_button)
 
-        print(self.bottom_numbers)
-            
         self.replay_mode = True
         self.current_replay_index = 0
         self.highlighted_positions = []  # Clear all highlights
-        
+
         # Clear any existing text highlights
         if self.move_text:
             self.move_text.tag_remove('highlight', '1.0', tk.END)
@@ -1962,6 +1964,39 @@ class ChineseChess:
         
         self.board = [row[:] for row in self.board_copy]
         self.draw_board()
+
+        if self.move_history_numbers[0][1][0] not in self.bottom_numbers:
+
+            for numbers in self.move_history_numbers:
+                top_numbers = []
+                bottom_numbers = []
+                top_numbers[:] = numbers[1][:]
+                bottom_numbers[:] = numbers[0][:]
+                top_numbers.reverse()
+                bottom_numbers.reverse()
+                self.rotate_move_history_numbers.append([top_numbers, bottom_numbers])
+
+            self.board = [[None for _ in range(9)] for _ in range(10)]
+            self.highlighted_positions = []
+
+            for move in self.move_history:
+                self.board = [row[:] for row in move['board_state']]
+                self.highlighted_positions = [move['from_pos'], move['to_pos']]
+                self.rotate_to_replay()
+                        
+                new_move = {
+                    'from_pos': self.rotate_single_highlight[0],
+                    'to_pos': self.rotate_single_highlight[1],
+                    'piece': move['piece'],
+                    'board_state': [row[:] for row in self.rotate_board]  # Deep copy of board
+                }
+
+                self.rotate_move_history.append(new_move)
+
+            self.move_history = self.rotate_move_history
+            self.move_history_numbers = self.rotate_move_history_numbers
+
+            
 
     def end_replay(self):
         """End replay mode"""
