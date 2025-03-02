@@ -739,9 +739,52 @@ class ChineseChess:
             
             # Only allow return if piece originally came from side panel
             if self.selected_instance_id and self.selected_instance_id in self.piece_original_positions:
-                # ... (rest of side panel return code remains the same)
-                # Draw board will be called at the end which will clear the trace
-        
+                # Get original position information
+                original_info = self.piece_original_positions[self.selected_instance_id]
+                canvas = original_info['canvas']
+                x = original_info['x']
+                y = original_info['y']
+                piece = original_info['piece']
+                
+                # Recreate piece in side panel
+                circle = canvas.create_oval(
+                    x - self.piece_radius, y - self.piece_radius,
+                    x + self.piece_radius, y + self.piece_radius,
+                    fill='white',
+                    outline='red' if piece.startswith('R') else 'black',
+                    width=2,
+                    tags=(self.selected_instance_id,)
+                )
+                
+                text = canvas.create_text(
+                    x, y,
+                    text=piece[1],
+                    fill='red' if piece.startswith('R') else 'black',
+                    font=('KaiTi', 25, 'bold'),
+                    tags=(self.selected_instance_id,)
+                )
+                
+                # Rebind click event
+                for item in [circle, text]:
+                    canvas.tag_bind(
+                        self.selected_instance_id,
+                        '<Button-1>',
+                        lambda e, c=canvas, i=self.selected_instance_id, p=piece:
+                            self.select_piece_from_canvas(e, c, i, p)
+                    )
+                
+                # Clean up references
+                if self.selected_board_piece in self.side_panel_pieces:
+                    del self.side_panel_pieces[self.selected_board_piece]
+                
+                # Reset selection states
+                self.piece_to_place = None
+                self.source_canvas = None
+                self.selected_instance_id = None
+                self.selected_board_piece = None
+                self.highlighted_positions = []
+                self.draw_board()
+
         else:  # Clicked outside both board and panel
             # Clear trace highlight
             self.trace_highlight = []
