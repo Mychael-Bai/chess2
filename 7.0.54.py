@@ -143,7 +143,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.54 (the replay length of move history is ok and in piece setting mode, the piece position can be modified)")
+        self.window.title("Chinese Chess 7.0.54 (latest version, the replay length of move history is ok and in piece setting mode, the piece position can be modified)")
            
         self.game_history = []  # List to store all games
 
