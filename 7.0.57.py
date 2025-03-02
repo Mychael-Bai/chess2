@@ -143,7 +143,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.54 (the replay length of move history is ok and in piece setting mode, the piece position can be modified)")
+        self.window.title("Chinese Chess 7.0.48 (the replay length of move history is ok)")
            
         self.game_history = []  # List to store all games
 
@@ -151,6 +151,12 @@ class ChineseChess:
         self.board_size = 9  # 9x10 board
         self.cell_size = 54
         self.piece_radius = 23  # Smaller pieces to fit on intersections
+
+
+        self.trace_highlight = []  # Track position of the trace highlight
+        self.trace_radius = self.piece_radius - 4  # Make trace slightly smaller than piece
+        
+        
         self.board_margin = 60  # Margin around the board
         # Calculate total canvas size including margins
         self.canvas_width = self.cell_size * 8 + 2 * self.board_margin
@@ -644,6 +650,112 @@ class ChineseChess:
         self.draw_board()
 
     def on_click(self, event):
+        
+
+
+        """Handle mouse clicks in piece setting mode"""
+        if not self.piece_setting_mode:
+            return
+        
+        # Get absolute coordinates relative to main window
+        window_x = event.x_root - self.window.winfo_rootx()
+        window_y = event.y_root - self.window.winfo_rooty()
+        
+        # Get board-relative coordinates if available
+        board_x = event.x - self.board_margin if hasattr(event, 'x') else None
+        board_y = event.y - self.board_margin if hasattr(event, 'y') else None
+        
+        # Convert to board grid position if click was on board
+        if board_x is not None and board_y is not None:
+            col = round(board_x / self.cell_size)
+            row = round(board_y / self.cell_size)
+            on_board = 0 <= row < 10 and 0 <= col < 9
+        else:
+            on_board = False
+
+        # Check if click was in side panel area
+        in_side_panel = False
+        if self.side_panel_bounds:
+            in_side_panel = (
+                self.side_panel_bounds[0] <= window_x <= self.side_panel_bounds[2] and
+                self.side_panel_bounds[1] <= window_y <= self.side_panel_bounds[3]
+            )
+
+        if on_board:
+            if self.piece_to_place:  # We have a piece ready to place
+                # Place piece on board
+                self.board[row][col] = self.piece_to_place
+                
+                # If piece came from side panel, track its information
+                if self.selected_instance_id:
+                    self.side_panel_pieces[(row, col)] = {
+                        'instance_id': self.selected_instance_id,
+                        'original_info': self.piece_original_positions.get(self.selected_instance_id)
+                    }
+                    
+                    # Remove piece from side panel
+                    if self.source_canvas:
+                        for item in self.source_canvas.find_withtag(self.selected_instance_id):
+                            self.source_canvas.delete(item)
+                        self.source_canvas.delete('highlight')
+                
+                # Clear trace highlight when placing piece
+                self.trace_highlight = []
+                
+                # Update display with new highlight
+                self.highlighted_positions = [(row, col)]
+                self.draw_board()
+                
+                # Reset selection states
+                self.piece_to_place = None
+                self.source_canvas = None
+                self.selected_instance_id = None
+                
+            else:  # No piece selected - picking up from board
+                piece = self.board[row][col]
+                if piece:
+                    # Store piece information
+                    self.piece_to_place = piece
+                    self.selected_board_piece = (row, col)
+                    
+                    # Set trace highlight at the original position
+                    self.trace_highlight = [(row, col)]
+                    
+                    # If piece was from side panel, restore that information
+                    if (row, col) in self.side_panel_pieces:
+                        panel_info = self.side_panel_pieces[(row, col)]
+                        self.selected_instance_id = panel_info['instance_id']
+                        if panel_info['original_info']:
+                            self.source_canvas = panel_info['original_info']['canvas']
+                    
+                    # Remove piece from board and update display
+                    self.board[row][col] = None
+                    self.highlighted_positions = []
+                    self.draw_board()
+        
+        elif in_side_panel and self.piece_to_place and self.selected_board_piece:
+            # Clear trace highlight when returning piece to side panel
+            self.trace_highlight = []
+            
+            # Only allow return if piece originally came from side panel
+            if self.selected_instance_id and self.selected_instance_id in self.piece_original_positions:
+                # ... (rest of side panel return code remains the same)
+                # Draw board will be called at the end which will clear the trace
+        
+        else:  # Clicked outside both board and panel
+            # Clear trace highlight
+            self.trace_highlight = []
+            
+            # Cancel any current selection
+            self.piece_to_place = None
+            self.selected_instance_id = None
+            self.selected_board_piece = None
+            if self.source_canvas:
+                self.source_canvas.delete('highlight')
+            self.source_canvas = None
+            self.highlighted_positions = []
+            self.draw_board()
+
         
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
@@ -2234,6 +2346,41 @@ class ChineseChess:
             text="楚   河        漢   界",
             font=('KaiTi', 23)
         )
+        
+
+
+        # Draw trace highlights (add this before drawing pieces)
+        for row, col in self.trace_highlight:
+            # Calculate center position
+            center_x = self.board_margin + col * self.cell_size
+            center_y = self.board_margin + row * self.cell_size
+            
+            # Draw smaller highlight circle
+            self.canvas.create_oval(
+                center_x - self.trace_radius,
+                center_y - self.trace_radius,
+                center_x + self.trace_radius,
+                center_y + self.trace_radius,
+                outline='yellow',
+                width=2,
+                tags='trace'
+            )
+
+        # Draw regular highlights (existing code)
+        for row, col in self.highlighted_positions:
+            center_x = self.board_margin + col * self.cell_size
+            center_y = self.board_margin + row * self.cell_size
+            self.canvas.create_rectangle(
+                center_x - self.piece_radius - 2,
+                center_y - self.piece_radius - 2,
+                center_x + self.piece_radius + 2,
+                center_y + self.piece_radius + 2,
+                outline='yellow',
+                width=2,
+                tags='highlight'
+            )
+
+
         
         # Draw pieces on intersections
         for row in range(10):

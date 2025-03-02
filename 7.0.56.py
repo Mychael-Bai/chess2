@@ -21,6 +21,7 @@ class ChineseChess:
         self.copy_switch_board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         
         
+        
         self.piece_original_positions = {}  # To track original positions of pieces from side panel
         self.side_panel_pieces = {}  # To track which pieces came from side panel
         
@@ -143,7 +144,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.54 (the replay length of move history is ok and in piece setting mode, the piece position can be modified)")
+        self.window.title("Chinese Chess 7.0.48 (the replay length of move history is ok)")
            
         self.game_history = []  # List to store all games
 
@@ -151,6 +152,12 @@ class ChineseChess:
         self.board_size = 9  # 9x10 board
         self.cell_size = 54
         self.piece_radius = 23  # Smaller pieces to fit on intersections
+
+
+        self.trace_highlight = []  # Track position of the trace highlight
+        self.trace_radius = self.piece_radius - 4  # Make trace slightly smaller than piece
+        
+        
         self.board_margin = 60  # Margin around the board
         # Calculate total canvas size including margins
         self.canvas_width = self.cell_size * 8 + 2 * self.board_margin
@@ -2268,6 +2275,25 @@ class ChineseChess:
         for pos in self.highlighted_positions:
             row, col = pos
             self.highlight_piece(row, col)
+
+
+        # Draw trace highlights (add this before drawing pieces)
+        for row, col in self.trace_highlight:
+            # Calculate center position
+            center_x = self.board_margin + col * self.cell_size
+            center_y = self.board_margin + row * self.cell_size
+            
+            # Draw smaller highlight circle
+            self.canvas.create_oval(
+                center_x - self.trace_radius,
+                center_y - self.trace_radius,
+                center_x + self.trace_radius,
+                center_y + self.trace_radius,
+                outline='yellow',
+                width=2,
+                tags='trace'
+            )
+
 
         # Draw top numbers
         for col, num in enumerate(self.top_numbers):
