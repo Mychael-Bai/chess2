@@ -143,7 +143,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.80 (latest version, placement without 2 kings is invalid)")
+        self.window.title("Chinese Chess 7.0.80 (latest version, moves of records responsible to mouse click)")
            
         self.game_history = []  # List to store all games
 
@@ -309,6 +309,43 @@ class ChineseChess:
         self.canvas.bind('<Button-1>', self.on_click)
 
 
+
+    def on_record_click(self, event):
+        """Handle clicks on the move records"""
+        if not self.replay_mode:
+            return
+
+        # Get the clicked line number
+        index = self.move_text.index(f"@{event.x},{event.y}")
+        line_number = int(index.split('.')[0]) - 1  # Convert to 0-based index
+        
+        if 0 <= line_number < len(self.move_history):
+            # Update replay index and board state
+            self.current_replay_index = line_number + 1
+            move = self.move_history[line_number]
+            
+            # Restore board state
+            for i in range(len(self.board)):
+                self.board[i] = move['board_state'][i][:]
+            
+            # Highlight the move
+            self.highlighted_positions = [move['from_pos'], move['to_pos']]
+            
+            if self.move_history_numbers[line_number]:
+                self.top_numbers = self.move_history_numbers[line_number][0]
+                self.bottom_numbers = self.move_history_numbers[line_number][1]
+            
+            # Update button states
+            self.prev_move_button.config(state=tk.NORMAL)
+            self.next_move_button.config(
+                state=tk.NORMAL if self.current_replay_index < len(self.move_history) else tk.DISABLED
+            )
+            
+            # Highlight the current move in records
+            self.highlight_current_move(line_number)
+            
+            # Redraw the board
+            self.draw_board()
 
     def rotate_to_replay(self):
         """Switch the board orientation by rotating it 180 degrees"""
@@ -1956,6 +1993,8 @@ class ChineseChess:
             self.move_text.config(state='disabled')
             self.move_text.see(tk.END)  # Scroll to the bottom
 
+
+
     def toggle_records(self):
         """Toggle the visibility of the records frame"""
 
@@ -1971,8 +2010,6 @@ class ChineseChess:
         )
         self.records_button.pack(pady=5, before=self.switch_color_button)
 
-        
-        
         # Handle the records frame visibility
         if self.records_frame.winfo_ismapped():
             self.records_frame.pack_forget()
@@ -1988,6 +2025,10 @@ class ChineseChess:
             if self.piece_setting_mode and self.pieces_frame:
                 self.pieces_frame.pack_forget()
                 self.pieces_frame.pack(side=tk.RIGHT, padx=10)
+            
+            # Bind click event to the move text widget
+            self.move_text.bind('<Button-1>', self.on_record_click)
+
 
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on
