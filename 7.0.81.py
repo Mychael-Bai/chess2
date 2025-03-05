@@ -143,7 +143,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.80 (latest version, placement without 2 kings is invalid)")
+        self.window.title("Chinese Chess 7.0.81 (latest version, same as 7.0.80, except records feature)")
            
         self.game_history = []  # List to store all games
 
