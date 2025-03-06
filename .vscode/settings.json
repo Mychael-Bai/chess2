@@ -4,5 +4,20 @@
     "git.openRepositoryInParentFolders": "always",
     "git.terminalGitEditor": true,
     "git.enableSmartCommit": true,
-    "editor.tokenColorCustomizations": {}
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "keyword",
+                    "keyword.control",
+                    "storage.type",
+                    "keyword.other"
+                ],
+                "settings": {
+                    "fontStyle": "",
+                }
+            }
+        ]
+    },
+    "editor.fontFamily": "Consolas"
 }
