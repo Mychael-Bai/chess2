@@ -20,6 +20,7 @@ class ChineseChess:
         self.board_copy = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         self.copy_switch_board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         
+        
         self.original_piece_info = None
         self.board_piece_info = None
         
