@@ -2,7 +2,9 @@
 import tkinter as tk
 
 from tkinter import ttk
-
+from mcts import MCTS
+import copy  # Add this import
+import random
 import os
 import pygame.mixer
 
@@ -197,7 +199,7 @@ class ChineseChess:
 
         self.records_button = ttk.Button(
             self.button_frame,
-            text="棋谱记录",
+            text="隐藏棋谱" if self.records_seen == True else "打开棋谱",
             command=self.toggle_records,
             width=8,
             style='Custom.TButton'
@@ -812,7 +814,6 @@ class ChineseChess:
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
 
-
         if self.piece_setting_mode:
             # Convert click coordinates to board position
             col = round((event.x - self.board_margin) / self.cell_size)
@@ -920,7 +921,6 @@ class ChineseChess:
                 
             return  # Exit the function early to prevent normal game logic
 
-
         if self.replay_mode or self.game_over:  # Add game_over check
             return  # Ignore clicks when game is over or in replay mode
         
@@ -978,6 +978,10 @@ class ChineseChess:
                             self.board[row][col]
                         )
 
+                        # Switch players
+                        self.current_player = 'black' if self.current_player == 'red' else 'red'
+                        self.window.after(500, self.make_ai_move)
+
                         self.move_rotate = False
                         if self.check_rotate == True:
 
@@ -1013,21 +1017,7 @@ class ChineseChess:
                     
                     # Redraw board
                     self.draw_board()
-
-
-                    # Switch players
-                    self.current_player = 'black' if self.current_player == 'red' else 'red'
-                    self.window.after(500, self.make_ai_move)
-                                            
-                    # Check if the opponent is now in checkmate
-                    if self.is_checkmate(self.current_player):
-
-                        self.window.after(500)
-
-                        
-                        self.handle_game_end()
-
-
+            
             # If no piece is selected and clicked on own piece, select it
             elif clicked_piece and clicked_piece[0] == self.current_player[0].upper():
                 self.selected_piece = (row, col)
@@ -1035,94 +1025,107 @@ class ChineseChess:
                 self.draw_board()        
 
     def make_ai_move(self):
-        import time
         
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
+        
+        print(f'self.current_player: {self.current_player}')
         
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
                             
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
-        start_time = time.time()
-        max_time = 5.0  # Reduced from 10.0 to make moves faster
-                        
-        best_score = float('-inf')
-        best_move = None
-        best_moving_piece = None
-        
+               
         # Get AI's color based on board orientation
         ai_color = 'red' if self.flipped else 'black'
-        
+
         # Get all valid moves for AI's color
         moves = self.get_all_valid_moves(ai_color)
-        
+
         if not moves:
             # Add this check to handle stalemate or other end conditions
             if self.is_in_check(ai_color):
                 self.game_over = True
                 self.handle_game_end()
             return
-                
-        # Sort moves by preliminary evaluation
-        moves.sort(key=self._move_sorting_score, reverse=True)
-        
-        # Check if opponent is in check
+
         opponent_color = 'black' if ai_color == 'red' else 'red'
-        is_check = self.is_in_check(opponent_color)
-        max_depth = 6 if is_check else 4  # Search deeper when opponent is in check
-        
-        # Iterative deepening
-        for search_depth in range(2, max_depth + 1):
-            if time.time() - start_time > max_time:
-                break
+
+        # Initialize MCTS with current board state
+        mcts = MCTS(
+            initial_state=copy.deepcopy(self.board),
+            player=self.current_player,
+            iterations=1000
+        )
             
-            alpha = float('-inf')
-            beta = float('inf')
+        # Get the best move from MCTS
+        best_move = mcts.get_best_move()
             
-            for from_pos, to_pos in moves:
-                if time.time() - start_time > max_time:
-                    break
-                
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                
-                # Make temporary move
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check(ai_color):
-                    score = self.minimax(search_depth - 1, alpha, beta, False)
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_move = (from_pos, to_pos)
-                        best_moving_piece = moving_piece
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-        
         # Make the best move found
         if best_move:
-            from_pos, to_pos = best_move
-            # Make the actual move
-            self.board[to_pos[0]][to_pos[1]] = best_moving_piece
-
-            self.board[from_pos[0]][from_pos[1]] = None
-                                                
+            print(f'best_move: exist')
+            
+            start_pos, end_pos = best_move
+            
+            
+            # Test if the move is safe (doesn't put own king in check)
+            test_board = copy.deepcopy(self.board)
+            test_board[end_pos[0]][end_pos[1]] = test_board[start_pos[0]][start_pos[1]]
+            test_board[start_pos[0]][start_pos[1]] = None
+            
+            # Store current board state
+            original_board = copy.deepcopy(self.board)
+            
+            # Temporarily make the move to test
+            self.board = test_board
+            
+            # Check if the move puts own king in check
+            if self.is_in_check(self.current_player):
+                # Restore original board and find another move
+                self.board = original_board
+                # Try to find a safe move from all valid moves
+                safe_moves = []
+                for move in self.get_all_valid_moves(self.current_player):
+                    from_pos, to_pos = move
+                    # Test each move
+                    test_board = copy.deepcopy(self.board)
+                    test_board[to_pos[0]][to_pos[1]] = test_board[from_pos[0]][from_pos[1]]
+                    test_board[from_pos[0]][from_pos[1]] = None
+                    self.board = test_board
+                    if not self.is_in_check(self.current_player):
+                        safe_moves.append(move)
+                    self.board = original_board
+                
+                if safe_moves:
+                    # Choose a random safe move
+                    start_pos, end_pos = random.choice(safe_moves)
+                else:
+                    # No safe moves available
+                    self.game_over = True
+                    self.handle_game_end()
+                    return
+            
+            # Restore original board and make the chosen move
+            self.board = original_board
+            
+            
+            # Make the move
+            self.board[end_pos[0]][end_pos[1]] = self.board[start_pos[0]][start_pos[1]]
+            self.board[start_pos[0]][start_pos[1]] = None
+            
+            # Update highlights and history
+            self.highlighted_positions = [start_pos, end_pos]
+                            
+            # Add move to records and history
+            self.add_move_to_records(start_pos, end_pos, self.board[end_pos[0]][end_pos[1]])
+            self.add_move_to_history(start_pos, end_pos, self.board[end_pos[0]][end_pos[1]])
+                                   
             # Play move sound
             if self.sound_effect_on:
-                                            
                 if hasattr(self, 'move_sound') and self.move_sound:
                     self.move_sound.play()
-                                
-            # Update game state
-            self.highlighted_positions = [from_pos, to_pos]
-    
-            self.add_move_to_records(from_pos, to_pos, best_moving_piece)
-
+                       
             # Switch to opponent's turn
             self.current_player = opponent_color
             
@@ -1148,12 +1151,14 @@ class ChineseChess:
             else:
                 self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
 
-            # Add this line to record the AI move
-            self.add_move_to_history(from_pos, to_pos, best_moving_piece)
 
             # Update display
             self.draw_board()
-                     
+
+        # Check if the opponent is now in checkmate
+        if self.is_checkmate(self.current_player):
+            self.handle_game_end()
+                        
         # Check if the opponent is now in checkmate
         opponent_color = 'black' if ai_color == 'red' else 'red'
         if not self.is_checkmate(opponent_color):
@@ -2012,7 +2017,7 @@ class ChineseChess:
         self.records_button.destroy()
         self.records_button = ttk.Button(
             self.button_frame,
-            text="棋谱记录",
+            text="隐藏棋谱" if self.records_seen == True else "打开棋谱",
             command=self.toggle_records,
             width=8,
             style='Custom.TButton'
@@ -2219,6 +2224,10 @@ class ChineseChess:
             self.show_centered_warning("提示", "没有可以回放的历史记录")
             return
             
+        if self.records_seen == False:
+            self.toggle_records()
+        else:
+            pass
 
         self.replay_button.destroy()
         # Create replay button

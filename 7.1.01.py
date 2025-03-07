@@ -2,6 +2,8 @@
 import tkinter as tk
 
 from tkinter import ttk
+from mcts import MCTS
+import copy  # Add this import
 
 import os
 import pygame.mixer
@@ -197,7 +199,7 @@ class ChineseChess:
 
         self.records_button = ttk.Button(
             self.button_frame,
-            text="棋谱记录",
+            text="隐藏棋谱" if self.records_seen == True else "打开棋谱",
             command=self.toggle_records,
             width=8,
             style='Custom.TButton'
@@ -978,6 +980,10 @@ class ChineseChess:
                             self.board[row][col]
                         )
 
+                        # Switch players
+                        self.current_player = 'black' if self.current_player == 'red' else 'red'
+                        self.window.after(500, self.make_ai_move)
+
                         self.move_rotate = False
                         if self.check_rotate == True:
 
@@ -1013,152 +1019,63 @@ class ChineseChess:
                     
                     # Redraw board
                     self.draw_board()
-
-
-                    # Switch players
-                    self.current_player = 'black' if self.current_player == 'red' else 'red'
-                    self.window.after(500, self.make_ai_move)
-                                            
-                    # Check if the opponent is now in checkmate
-                    if self.is_checkmate(self.current_player):
-
-                        self.window.after(500)
-
-                        
-                        self.handle_game_end()
-
-
+            
             # If no piece is selected and clicked on own piece, select it
             elif clicked_piece and clicked_piece[0] == self.current_player[0].upper():
                 self.selected_piece = (row, col)
                 self.highlighted_positions = [(row, col)]  # Initialize highlights with selected piece
                 self.draw_board()        
 
+
+
+    # Replace the make_ai_move method
     def make_ai_move(self):
-        import time
-        
-        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
-        self.rotate_single_highlight = []
-        
-        if len(self.move_history) == 0:
-            self.board_copy = [row[:] for row in self.board]
-                            
-        if self.is_checkmate('red') or self.is_checkmate('black'):
-            self.game_over = True
-        start_time = time.time()
-        max_time = 5.0  # Reduced from 10.0 to make moves faster
-                        
-        best_score = float('-inf')
-        best_move = None
-        best_moving_piece = None
-        
-        # Get AI's color based on board orientation
-        ai_color = 'red' if self.flipped else 'black'
-        
-        # Get all valid moves for AI's color
-        moves = self.get_all_valid_moves(ai_color)
-        
-        if not moves:
-            # Add this check to handle stalemate or other end conditions
-            if self.is_in_check(ai_color):
-                self.game_over = True
-                self.handle_game_end()
+        if self.game_over or self.piece_setting_mode:
             return
-                
-        # Sort moves by preliminary evaluation
-        moves.sort(key=self._move_sorting_score, reverse=True)
-        
-        # Check if opponent is in check
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        is_check = self.is_in_check(opponent_color)
-        max_depth = 6 if is_check else 4  # Search deeper when opponent is in check
-        
-        # Iterative deepening
-        for search_depth in range(2, max_depth + 1):
-            if time.time() - start_time > max_time:
-                break
+
+        # First check if there are any valid moves
+        valid_moves = self.get_all_valid_moves(self.current_player)
+        if not valid_moves:
+            self.game_over = True
+            self.show_centered_warning("Game Over", "No valid moves available")
+            return
+
+        # Initialize MCTS with current board state
+        mcts = MCTS(
+            initial_state=copy.deepcopy(self.board),
+            player=self.current_player,
+            iterations=1000  # Adjust this number based on desired strength/speed
+        )
             
-            alpha = float('-inf')
-            beta = float('inf')
+        # Get the best move from MCTS
+        best_move = mcts.get_best_move()
             
-            for from_pos, to_pos in moves:
-                if time.time() - start_time > max_time:
-                    break
-                
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                
-                # Make temporary move
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check(ai_color):
-                    score = self.minimax(search_depth - 1, alpha, beta, False)
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_move = (from_pos, to_pos)
-                        best_moving_piece = moving_piece
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
+        if not best_move:
+            # Fallback to a random valid move if MCTS fails
+            best_move = random.choice(valid_moves)
         
-        # Make the best move found
-        if best_move:
-            from_pos, to_pos = best_move
-            # Make the actual move
-            self.board[to_pos[0]][to_pos[1]] = best_moving_piece
-
-            self.board[from_pos[0]][from_pos[1]] = None
-                                                
-            # Play move sound
-            if self.sound_effect_on:
-                                            
-                if hasattr(self, 'move_sound') and self.move_sound:
-                    self.move_sound.play()
-                                
-            # Update game state
-            self.highlighted_positions = [from_pos, to_pos]
-    
-            self.add_move_to_records(from_pos, to_pos, best_moving_piece)
-
-            # Switch to opponent's turn
-            self.current_player = opponent_color
-            
-            self.move_rotate = False
-            if self.check_rotate == True:
-                self.move_rotate = True
-
-                self.rotate_to_replay()
-                from_pos = self.rotate_single_highlight[0]
-                to_pos = self.rotate_single_highlight[1]
-
-                self.history_top_numbers = []
-                self.history_bottom_numbers = []
-
-                self.history_top_numbers[:] = self.bottom_numbers[:]
-                self.history_bottom_numbers[:] = self.top_numbers[:]
-    
-                self.history_top_numbers.reverse()
-                self.history_bottom_numbers.reverse()
-                
-                self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
-
-            else:
-                self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-
-            # Add this line to record the AI move
-            self.add_move_to_history(from_pos, to_pos, best_moving_piece)
-
-            # Update display
-            self.draw_board()
-                     
-        # Check if the opponent is now in checkmate
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        if not self.is_checkmate(opponent_color):
-            self.game_over = False  # Explicitly set game_over to False if not checkmate
-       
+        start_pos, end_pos = best_move
+        
+        # Make the move
+        self.board[end_pos[0]][end_pos[1]] = self.board[start_pos[0]][start_pos[1]]
+        self.board[start_pos[0]][start_pos[1]] = None
+        
+        # Update highlights and history
+        self.highlighted_positions = [start_pos, end_pos]
+        
+        # Play sound if enabled
+        if self.sound_effect_on and hasattr(self, 'move_sound') and self.move_sound:
+            self.move_sound.play()
+        
+        # Add move to records and history
+        self.add_move_to_records(start_pos, end_pos, self.board[end_pos[0]][end_pos[1]])
+        self.add_move_to_history(start_pos, end_pos, self.board[end_pos[0]][end_pos[1]])
+        
+        # Switch players
+        self.current_player = 'black' if self.current_player == 'red' else 'red'
+        
+        # Update the board display
+        self.draw_board()
 
     
     def minimax(self, depth, alpha, beta, maximizing_player):
@@ -2012,7 +1929,7 @@ class ChineseChess:
         self.records_button.destroy()
         self.records_button = ttk.Button(
             self.button_frame,
-            text="棋谱记录",
+            text="隐藏棋谱" if self.records_seen == True else "打开棋谱",
             command=self.toggle_records,
             width=8,
             style='Custom.TButton'
@@ -2219,6 +2136,10 @@ class ChineseChess:
             self.show_centered_warning("提示", "没有可以回放的历史记录")
             return
             
+        if self.records_seen == False:
+            self.toggle_records()
+        else:
+            pass
 
         self.replay_button.destroy()
         # Create replay button
