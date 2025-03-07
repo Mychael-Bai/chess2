@@ -2212,6 +2212,10 @@ class ChineseChess:
             self.show_centered_warning("提示", "没有可以回放的历史记录")
             return
             
+        if self.records_seen == False:
+            self.toggle_records()
+        else:
+            pass
 
         self.replay_button.destroy()
         # Create replay button

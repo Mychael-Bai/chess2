@@ -197,7 +197,7 @@ class ChineseChess:
 
         self.records_button = ttk.Button(
             self.button_frame,
-            text="棋谱记录",
+            text="隐藏棋谱" if self.records_seen == True else "打开棋谱",
             command=self.toggle_records,
             width=8,
             style='Custom.TButton'
@@ -2005,7 +2005,7 @@ class ChineseChess:
         self.records_button.destroy()
         self.records_button = ttk.Button(
             self.button_frame,
-            text="棋谱记录",
+            text="隐藏棋谱" if self.records_seen == True else "打开棋谱",
             command=self.toggle_records,
             width=8,
             style='Custom.TButton'
@@ -2212,6 +2212,10 @@ class ChineseChess:
             self.show_centered_warning("提示", "没有可以回放的历史记录")
             return
             
+        if self.records_seen == False:
+            self.toggle_records()
+        else:
+            pass
 
         self.replay_button.destroy()
         # Create replay button
