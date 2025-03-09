@@ -429,20 +429,18 @@ class MCTSNode:
         self.untried_moves = None
 
 
+
     def simulate(self):
         current_state = copy.deepcopy(self.state)
         current_player = self.player
-        game_rules = self.game_rules  # Use the passed game rules
+        game_rules = self.game_rules
         
         depth = 0
-        max_depth = 50  # Prevent infinite games
-        
-        while depth < max_depth:
-            # Update game rules state
+        while depth < 50:  # Prevent infinite games
             game_rules.state = current_state
-            
-            # Get valid moves for current position
             valid_moves = []
+            
+            # Get valid moves that don't put own king in check
             for row in range(10):
                 for col in range(9):
                     piece = current_state[row][col]
@@ -452,7 +450,14 @@ class MCTSNode:
                                 from_pos = (row, col)
                                 to_pos = (to_row, to_col)
                                 if game_rules.is_valid_move(from_pos, to_pos):
-                                    valid_moves.append((from_pos, to_pos))
+                                    # Test move
+                                    test_state = copy.deepcopy(current_state)
+                                    test_state[to_pos[0]][to_pos[1]] = test_state[from_pos[0]][from_pos[1]]
+                                    test_state[from_pos[0]][from_pos[1]] = None
+                                    game_rules.state = test_state
+                                    if not game_rules.is_in_check(current_player):
+                                        valid_moves.append((from_pos, to_pos))
+                                    game_rules.state = current_state  # Restore state
             
             if not valid_moves:
                 break
@@ -460,21 +465,20 @@ class MCTSNode:
             # Make random move
             move = random.choice(valid_moves)
             from_pos, to_pos = move
-            
-            # Update state
             current_state[to_pos[0]][to_pos[1]] = current_state[from_pos[0]][from_pos[1]]
             current_state[from_pos[0]][from_pos[1]] = None
             
             # Switch player
-            current_player = 'red' if current_player == 'black' else 'black'
+            current_player = 'black' if current_player == 'red' else 'red'
             depth += 1
             
             # Check for win conditions
             game_rules.state = current_state
-            if game_rules.is_in_check('red' if current_player == 'black' else 'black'):
-                return current_player == self.player
+            if game_rules.is_checkmate(current_player):
+                return current_player != self.player  # Return True if we won
                 
-        return random.random() < 0.5  # If no conclusion, return random result
+        # If no conclusion, evaluate position
+        return self.evaluate_final_position(current_state, self.player)
 
     @staticmethod
     def get_piece_value(piece_type):
@@ -535,7 +539,6 @@ class MCTSNode:
                                 if self.game_rules.is_valid_move(from_pos, to_pos):
                                     self.untried_moves.append((from_pos, to_pos))
 
-            print(f"Found {valid_moves_count} valid moves for {self.player}")
                                     
         return self.untried_moves
 
@@ -698,18 +701,27 @@ class MCTS:
                 from_pos, to_pos = child.move
                 test_state[to_pos[0]][to_pos[1]] = test_state[from_pos[0]][from_pos[1]]
                 test_state[from_pos[0]][from_pos[1]] = None
+
+                # Update game rules with test state before checking
+                self.game_rules.state = test_state
                 
                 # Check if our move puts our own king in check
                 if not self.game_rules.is_in_check(self.root.player):
                     result = self.simulate(child)
                     self.backpropagate(child, result)
+
+                # Restore original state in game_rules
+                self.game_rules.state = self.root.state
+                    
             else:
                 result = self.simulate(node)
                 self.backpropagate(node, result)
 
+
         if not self.root.children:
             # Fallback to random valid move if no good moves found
             valid_moves = []
+            self.game_rules.state = self.root.state  # Update game rules state
             for row in range(10):
                 for col in range(9):
                     piece = self.root.state[row][col]
@@ -717,11 +729,12 @@ class MCTS:
                         for to_row in range(10):
                             for to_col in range(9):
                                 move = ((row, col), (to_row, to_col))
-                                if self.root.is_valid_move(move[0], move[1]):
+                                if self.game_rules.is_valid_move(move[0], move[1]):
                                     # Test if move doesn't leave us in check
                                     test_state = copy.deepcopy(self.root.state)
                                     test_state[to_row][to_col] = test_state[row][col]
                                     test_state[row][col] = None
+                                    self.game_rules.state = test_state
                                     if not self.game_rules.is_in_check(self.root.player):
                                         valid_moves.append(move)
             return random.choice(valid_moves) if valid_moves else None
