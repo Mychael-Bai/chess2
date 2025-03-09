@@ -533,8 +533,9 @@ class ChineseChess:
     def __init__(self):
            
         self.flipped = False  # False means red at bottom, True means black at bottom
+        self.board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board
+        self.setup_pieces()  # Set up the initial pieces
 
-        self.board = self.initialize_board()
         self.game_rules = GameRules(state=self.board)  # Add this line
            
         # Add at the beginning of __init__
@@ -1507,88 +1508,94 @@ class ChineseChess:
             if self.selected_piece:
                 start_row, start_col = self.selected_piece
                 
-                # If clicking on another piece of the same color, select that piece instead
-                if (clicked_piece and 
-                    clicked_piece[0] == self.current_player[0].upper()):
-                    self.selected_piece = (row, col)
-                    self.highlighted_positions = [(row, col)]  # Reset highlights for new selection
-                    self.draw_board()
-                # If clicking on a valid move position
-                elif self.game_rules.is_valid_move(self.selected_piece, (row, col)):
-                    # Store the current state to check for check
-                    original_piece = self.board[row][col]
+                # Update game rules with current board state before checking moves
+                self.game_rules.state = self.board
+                self.game_rules.flipped = self.flipped
+                
+                if self.game_rules.is_valid_move(self.selected_piece, (row, col)):
                     
-                    # Make the move temporarily
-                    self.board[row][col] = self.board[start_row][start_col]
-                    self.board[start_row][start_col] = None
-                    
-                    # Check if the move puts own king in check
-                    if self.is_in_check(self.current_player):
-                        # Undo the move if it puts own king in check
-                        self.board[start_row][start_col] = self.board[row][col]
-                        self.board[row][col] = original_piece
+                    # If clicking on another piece of the same color, select that piece instead
+                    if (clicked_piece and 
+                        clicked_piece[0] == self.current_player[0].upper()):
+                        self.selected_piece = (row, col)
+                        self.highlighted_positions = [(row, col)]  # Reset highlights for new selection
+                        self.draw_board()
+                    # If clicking on a valid move position
+                    elif self.game_rules.is_valid_move(self.selected_piece, (row, col)):
+                        # Store the current state to check for check
+                        original_piece = self.board[row][col]
+                        
+                        # Make the move temporarily
+                        self.board[row][col] = self.board[start_row][start_col]
+                        self.board[start_row][start_col] = None
+                        
+                        # Check if the move puts own king in check
+                        if self.is_in_check(self.current_player):
+                            # Undo the move if it puts own king in check
+                            self.board[start_row][start_col] = self.board[row][col]
+                            self.board[row][col] = original_piece
 
-                        if self.current_player == 'red':
-                            self.show_centered_warning("Invalid Move", "你正在被将军")
+                            if self.current_player == 'red':
+                                self.show_centered_warning("Invalid Move", "你正在被将军")
+                            else:
+                                self.show_centered_warning("Invalid Move", "黑方正在被将军")
+
                         else:
-                            self.show_centered_warning("Invalid Move", "黑方正在被将军")
+                            # Keep both the original and new positions highlighted
+                            self.highlighted_positions = [(start_row, start_col), (row, col)]
 
-                    else:
-                        # Keep both the original and new positions highlighted
-                        self.highlighted_positions = [(start_row, start_col), (row, col)]
+                            # Play move sound
+                            if self.sound_effect_on:
+                                                            
+                                if hasattr(self, 'move_sound') and self.move_sound:
+                                    self.move_sound.play()
+                                    
+                            self.add_move_to_records(
+                                (start_row, start_col),
+                                (row, col),
+                                self.board[row][col]
+                            )
 
-                        # Play move sound
-                        if self.sound_effect_on:
-                                                        
-                            if hasattr(self, 'move_sound') and self.move_sound:
-                                self.move_sound.play()
-                                
-                        self.add_move_to_records(
-                            (start_row, start_col),
-                            (row, col),
-                            self.board[row][col]
-                        )
+                            # Switch players
+                            self.current_player = 'black' if self.current_player == 'red' else 'red'
+                            self.window.after(500, self.make_ai_move)
 
-                        # Switch players
-                        self.current_player = 'black' if self.current_player == 'red' else 'red'
-                        self.window.after(500, self.make_ai_move)
+                            self.move_rotate = False
+                            if self.check_rotate == True:
 
-                        self.move_rotate = False
-                        if self.check_rotate == True:
+                                self.move_rotate = True
 
-                            self.move_rotate = True
+                                self.rotate_to_replay()
+                                (start_row, start_col) = self.rotate_single_highlight[0]
+                                (row, col) = self.rotate_single_highlight[1]
 
-                            self.rotate_to_replay()
-                            (start_row, start_col) = self.rotate_single_highlight[0]
-                            (row, col) = self.rotate_single_highlight[1]
+                                self.history_top_numbers = []
+                                self.history_bottom_numbers = []
 
-                            self.history_top_numbers = []
-                            self.history_bottom_numbers = []
+                                self.history_top_numbers[:] = self.bottom_numbers[:]
+                                self.history_bottom_numbers[:] = self.top_numbers[:]
 
-                            self.history_top_numbers[:] = self.bottom_numbers[:]
-                            self.history_bottom_numbers[:] = self.top_numbers[:]
+                                self.history_top_numbers.reverse()
+                                self.history_bottom_numbers.reverse()
 
-                            self.history_top_numbers.reverse()
-                            self.history_bottom_numbers.reverse()
+                                self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
+                            else:
 
-                            self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
-                        else:
+                                self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
 
-                            self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
+                            # Add this line to record the move
+                            self.add_move_to_history(
+                                (start_row, start_col),
+                                (row, col),
+                                self.board[row][col]
+                            )
 
-                        # Add this line to record the move
-                        self.add_move_to_history(
-                            (start_row, start_col),
-                            (row, col),
-                            self.board[row][col]
-                        )
-
-                    # Reset selected piece
-                    self.selected_piece = None
-                    
-                    # Redraw board
-                    self.draw_board()
-            
+                        # Reset selected piece
+                        self.selected_piece = None
+                        
+                        # Redraw board
+                        self.draw_board()
+                
             # If no piece is selected and clicked on own piece, select it
             elif clicked_piece and clicked_piece[0] == self.current_player[0].upper():
                 self.selected_piece = (row, col)
