@@ -28,7 +28,7 @@ class GameRules:
         red_king_pos = black_king_pos = None
         for row in range(10):
             for col in range(9):
-                piece = self.board[row][col]
+                piece = self.state[row][col]
                 if piece:
                     if piece[1] == '帥':
                         red_king_pos = (row, col)
@@ -42,10 +42,10 @@ class GameRules:
         # Check from all positions on the board
         for row in range(10):
             for col in range(9):
-                piece = self.board[row][col]
+                piece = self.state[row][col]
                 if piece and piece[0] == attacking_color[0].upper():
                     # Check if this piece can move to the target position
-                    if self.game_rules.is_valid_move((row, col), pos):
+                    if self.is_valid_move((row, col), pos):
                         return True
         return False  
 
@@ -69,13 +69,14 @@ class GameRules:
         end_row = max(red_row, black_row)
         
         for row in range(start_row, end_row):
-            if self.board[row][red_col]:  # If there's any piece between
+            if self.state[row][red_col]:  # If there's any piece between
                 return False
                 
         # If we get here, the generals are facing each other
         return True
 
     def is_checkmate(self, color):
+        
         """
         Check if the given color is in checkmate.
         Returns True if the player has no legal moves to escape check.
@@ -85,23 +86,23 @@ class GameRules:
         # Try every possible move for every piece of the current player
         for row in range(10):
             for col in range(9):
-                piece = self.board[row][col]
+                piece = self.state[row][col]
                 if piece and piece[0] == color[0].upper():  # If it's current player's piece
                     # Try all possible destinations
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self.game_rules.is_valid_move((row, col), (to_row, to_col)):
+                            if self.is_valid_move((row, col), (to_row, to_col)):
                                 # Try the move
-                                original_piece = self.board[to_row][to_col]
-                                self.board[to_row][to_col] = piece
-                                self.board[row][col] = None
+                                original_piece = self.state[to_row][to_col]
+                                self.state[to_row][to_col] = piece
+                                self.state[row][col] = None
                                 
                                 # Check if still in check
                                 still_in_check = self.is_in_check(color)
                                 
                                 # Undo the move
-                                self.board[row][col] = piece
-                                self.board[to_row][to_col] = original_piece
+                                self.state[row][col] = piece
+                                self.state[to_row][to_col] = original_piece
                                 
                                 # If any move gets out of check, not checkmate
                                 if not still_in_check:
@@ -129,8 +130,6 @@ class GameRules:
             return self.is_position_under_attack(red_king_pos, 'black')
         else:
             return self.is_position_under_attack(black_king_pos, 'red')
-
-
 
         
     def is_valid_move(self, from_pos, to_pos):
@@ -1219,6 +1218,7 @@ class ChineseChess:
         if len(collect_kings) != 2:
             return False                            
                 
+        self.game_rules.state = self.board
         if self.game_rules.is_in_check('black') or self.game_rules.is_in_check('red'):
             return False
                             
@@ -1713,7 +1713,7 @@ class ChineseChess:
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
                             
-        if self.is_checkmate('red') or self.is_checkmate('black'):
+        if self.game_rules.is_checkmate('red') or self.game_rules.is_checkmate('black'):
             self.game_over = True
                
         # Get AI's color based on board orientation
@@ -1833,12 +1833,12 @@ class ChineseChess:
             self.draw_board()
 
         # Check if the opponent is now in checkmate
-        if self.is_checkmate(self.current_player):
+        if self.game_rules.is_checkmate(self.current_player):
             self.handle_game_end()
                         
         # Check if the opponent is now in checkmate
         opponent_color = 'black' if ai_color == 'red' else 'red'
-        if not self.is_checkmate(opponent_color):
+        if not self.game_rules.is_checkmate(opponent_color):
             self.game_over = False  # Explicitly set game_over to False if not checkmate
        
     
