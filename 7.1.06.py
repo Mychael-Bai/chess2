@@ -532,6 +532,8 @@ class ChineseChess:
 
     def __init__(self):
            
+        self.flipped = False  # False means red at bottom, True means black at bottom
+
         self.board = self.initialize_board()
         self.game_rules = GameRules(state=self.board)  # Add this line
            
@@ -639,7 +641,6 @@ class ChineseChess:
         self.current_replay_index = 0
         self.saved_board_states = []  # To store board states for replay
         self.game_over = False  # Add this line
-        self.flipped = False  # False means red at bottom, True means black at bottom
                 
         self.sound_effect_on = True
         
