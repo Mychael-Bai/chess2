@@ -21,10 +21,6 @@ class GameRules:
         self.flipped = flipped
 
 
-
-
-
-
     def evaluate_piece_safety(self, row, col, piece, color):
         """Evaluate how safe a piece is in its current position"""
         safety_score = 0
@@ -431,28 +427,54 @@ class MCTSNode:
         self.wins = 0
         self.visits = 0
         self.untried_moves = None
-        self.flipped = game_rules.flipped  # Get flipped state from game rules
 
 
-    def simulate(self, node):
-        # Update to use game_rules
-        state = copy.deepcopy(node.state)
-        current_player = node.player
+    def simulate(self):
+        current_state = copy.deepcopy(self.state)
+        current_player = self.player
+        game_rules = self.game_rules  # Use the passed game rules
+        
         depth = 0
-        max_depth = 50
-
+        max_depth = 50  # Prevent infinite games
+        
         while depth < max_depth:
+            # Update game rules state
+            game_rules.state = current_state
+            
+            # Get valid moves for current position
             valid_moves = []
             for row in range(10):
                 for col in range(9):
-                    piece = state[row][col]
+                    piece = current_state[row][col]
                     if piece and piece[0] == current_player[0].upper():
                         for to_row in range(10):
                             for to_col in range(9):
-                                move = ((row, col), (to_row, to_col))
-                                # Use game_rules instead of direct method call
-                                if self.game_rules.is_valid_move(move[0], move[1], state, self.flipped):
-                                    valid_moves.append(move)
+                                from_pos = (row, col)
+                                to_pos = (to_row, to_col)
+                                if game_rules.is_valid_move(from_pos, to_pos):
+                                    valid_moves.append((from_pos, to_pos))
+            
+            if not valid_moves:
+                break
+                
+            # Make random move
+            move = random.choice(valid_moves)
+            from_pos, to_pos = move
+            
+            # Update state
+            current_state[to_pos[0]][to_pos[1]] = current_state[from_pos[0]][from_pos[1]]
+            current_state[from_pos[0]][from_pos[1]] = None
+            
+            # Switch player
+            current_player = 'red' if current_player == 'black' else 'black'
+            depth += 1
+            
+            # Check for win conditions
+            game_rules.state = current_state
+            if game_rules.is_in_check('red' if current_player == 'black' else 'black'):
+                return current_player == self.player
+                
+        return random.random() < 0.5  # If no conclusion, return random result
 
     @staticmethod
     def get_piece_value(piece_type):
@@ -497,6 +519,10 @@ class MCTSNode:
         """Get list of untried moves from this state"""
         if self.untried_moves is None:
             self.untried_moves = []
+            # Update game rules state before checking moves
+            self.game_rules.state = self.state
+            valid_moves_count = 0
+
             for row in range(10):
                 for col in range(9):
                     piece = self.state[row][col]
@@ -508,6 +534,9 @@ class MCTSNode:
                                 # Use the game_rules object properly
                                 if self.game_rules.is_valid_move(from_pos, to_pos):
                                     self.untried_moves.append((from_pos, to_pos))
+
+            print(f"Found {valid_moves_count} valid moves for {self.player}")
+                                    
         return self.untried_moves
 
     def select_child(self):
