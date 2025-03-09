@@ -21,32 +21,135 @@ class GameRules:
         self.flipped = flipped
 
 
+
+
+    def find_kings(self):
+        """Find positions of both kings/generals"""
+        red_king_pos = black_king_pos = None
+        for row in range(10):
+            for col in range(9):
+                piece = self.board[row][col]
+                if piece:
+                    if piece[1] == '帥':
+                        red_king_pos = (row, col)
+                    elif piece[1] == '將':
+                        black_king_pos = (row, col)
+        return red_king_pos, black_king_pos
+
+    def is_position_under_attack(self, pos, attacking_color):
+        """Check if a position is under attack by pieces of the given color"""
+        
+        # Check from all positions on the board
+        for row in range(10):
+            for col in range(9):
+                piece = self.board[row][col]
+                if piece and piece[0] == attacking_color[0].upper():
+                    # Check if this piece can move to the target position
+                    if self.game_rules.is_valid_move((row, col), pos):
+                        return True
+        return False  
+
+    def is_generals_facing(self):
+        """Check if the two generals are facing each other directly"""
+        red_king_pos, black_king_pos = self.find_kings()
+        
+        # If either king is missing, return False
+        if not red_king_pos or not black_king_pos:
+            return False
+            
+        red_row, red_col = red_king_pos
+        black_row, black_col = black_king_pos
+        
+        # Check if generals are in the same column
+        if red_col != black_col:
+            return False
+            
+        # Check if there are any pieces between the generals
+        start_row = min(red_row, black_row) + 1
+        end_row = max(red_row, black_row)
+        
+        for row in range(start_row, end_row):
+            if self.board[row][red_col]:  # If there's any piece between
+                return False
+                
+        # If we get here, the generals are facing each other
+        return True
+
+    def is_checkmate(self, color):
+        """
+        Check if the given color is in checkmate.
+        Returns True if the player has no legal moves to escape check.
+        """
+        
+        
+        # Try every possible move for every piece of the current player
+        for row in range(10):
+            for col in range(9):
+                piece = self.board[row][col]
+                if piece and piece[0] == color[0].upper():  # If it's current player's piece
+                    # Try all possible destinations
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.game_rules.is_valid_move((row, col), (to_row, to_col)):
+                                # Try the move
+                                original_piece = self.board[to_row][to_col]
+                                self.board[to_row][to_col] = piece
+                                self.board[row][col] = None
+                                
+                                # Check if still in check
+                                still_in_check = self.is_in_check(color)
+                                
+                                # Undo the move
+                                self.board[row][col] = piece
+                                self.board[to_row][to_col] = original_piece
+                                
+                                # If any move gets out of check, not checkmate
+                                if not still_in_check:
+                                    return False
+        
+        # If no legal moves found, it's checkmate
+            
+        self.game_over = True  # Add this line
+
+        return True
+
+    def is_in_check(self, color):
+        """Check if the king of the given color is in check"""
+        red_king_pos, black_king_pos = self.find_kings()
+        
+        if not red_king_pos or not black_king_pos:
+            return False
+        
+        # First check the special case of facing generals
+        if self.is_generals_facing():
+            return True  # Both kings are in check in this case
+        
+        # Then check the normal cases of being under attack
+        if color == 'red':
+            return self.is_position_under_attack(red_king_pos, 'black')
+        else:
+            return self.is_position_under_attack(black_king_pos, 'red')
+
+
+
         
     def is_valid_move(self, from_pos, to_pos):
-
 
         # Guard against None inputs
         if not from_pos or not to_pos:
             return False
-        
-
 
         from_row, from_col = from_pos
         to_row, to_col = to_pos
-
-
         
         if not (0 <= from_row < 10 and 0 <= from_col < 9):
             return False
         if not (0 <= to_row < 10 and 0 <= to_col < 9):
             return False
-            
-
 
         # Guard against None state
         if self.state is None:
             return False
-
 
         # Then check piece exists
         piece = self.state[from_row][from_col]
@@ -481,7 +584,7 @@ class MCTS:
                 test_state[from_pos[0]][from_pos[1]] = None
                 
                 # Check if our move puts our own king in check
-                if not self.is_in_check(self.root.player):
+                if not self.game_rules.is_in_check(self.root.player):
                     result = self.simulate(child)
                     self.backpropagate(child, result)
             else:
@@ -503,7 +606,7 @@ class MCTS:
                                     test_state = copy.deepcopy(self.root.state)
                                     test_state[to_row][to_col] = test_state[row][col]
                                     test_state[row][col] = None
-                                    if not self.is_in_check(self.root.player):
+                                    if not self.game_rules.is_in_check(self.root.player):
                                         valid_moves.append(move)
             return random.choice(valid_moves) if valid_moves else None
 
@@ -1116,11 +1219,10 @@ class ChineseChess:
         if len(collect_kings) != 2:
             return False                            
                 
-        if self.is_in_check('black') or self.is_in_check('red'):
+        if self.game_rules.is_in_check('black') or self.game_rules.is_in_check('red'):
             return False
                             
         return True
-
 
     def toggle_piece_setting_mode(self):
         """Toggle between normal game mode and piece setting mode"""
@@ -1329,7 +1431,6 @@ class ChineseChess:
             self.black_canvas = create_piece_section(top_frame, 'B')
             self.red_canvas = create_piece_section(bottom_frame, 'R')
 
-
     def select_piece_from_canvas(self, event, canvas, instance_id, piece):
         """Handle piece selection from the pieces canvas"""
         # Clear previous highlights from all canvases
@@ -1370,7 +1471,6 @@ class ChineseChess:
                 width=2,
                 tags='highlight'
             )
-
 
     def select_piece_to_place(self, piece):
         """Handle piece selection for placement"""
@@ -1533,7 +1633,7 @@ class ChineseChess:
                         self.game_rules.state = self.board
                         
                         # Check if the move puts own king in check
-                        if self.is_in_check(self.current_player):
+                        if self.game_rules.is_in_check(self.current_player):
                             # Undo the move if it puts own king in check
                             self.board[start_row][start_col] = self.board[row][col]
                             self.board[row][col] = original_piece
@@ -1624,7 +1724,7 @@ class ChineseChess:
 
         if not moves:
             # Add this check to handle stalemate or other end conditions
-            if self.is_in_check(ai_color):
+            if self.game_rules.is_in_check(ai_color):
                 self.game_over = True
                 self.handle_game_end()
             return
@@ -1658,7 +1758,7 @@ class ChineseChess:
             self.board = test_board
             
             # Check if the move puts own king in check
-            if self.is_in_check(self.current_player):
+            if self.game_rules.is_in_check(self.current_player):
                 # Restore original board and find another move
                 self.board = original_board
                 # Try to find a safe move from all valid moves
@@ -1672,7 +1772,7 @@ class ChineseChess:
                     self.board = test_board
                     self.game_rules.state = self.board
                     
-                    if not self.is_in_check(self.current_player):
+                    if not self.game_rules.is_in_check(self.current_player):
                         safe_moves.append(move)
                     self.board = original_board
                 
@@ -1745,7 +1845,7 @@ class ChineseChess:
     def evaluate_checkmate_potential(self, color):
         """Evaluate how close we are to achieving checkmate"""
         opposing_color = 'red' if color == 'black' else 'black'
-        kings = self.find_kings()
+        kings = self.game_rules.find_kings()
         opponent_king_pos = kings[0] if color == 'black' else kings[1]
         score = 0
         
@@ -1785,7 +1885,7 @@ class ChineseChess:
                             self.board[r][c] = self.board[king_row][king_col]
                             self.board[king_row][king_col] = None
                             
-                            if not self.is_in_check(opposing_color):
+                            if not self.game_rules.is_in_check(opposing_color):
                                 escape_moves += 1
                                 
                             # Restore the position
@@ -1796,7 +1896,7 @@ class ChineseChess:
         score += (9 - escape_moves) * 50
         
         # Extra bonus if opponent is in check
-        if self.is_in_check(opposing_color):
+        if self.game_rules.is_in_check(opposing_color):
             score += 200
             
         return score
@@ -1826,11 +1926,11 @@ class ChineseChess:
         if self.is_checkmate('red'):
             score += 10000
         # High priority for check
-        elif self.is_in_check('red'):
+        elif self.game_rules.is_in_check('red'):
             score += 1000
             # Additional bonus if the opponent has limited escape moves
             escape_moves = 0
-            kings = self.find_kings()
+            kings = self.game_rules.find_kings()
             king_pos = kings[0]  # Red king
             if king_pos:
                 king_row, king_col = king_pos
@@ -1944,8 +2044,6 @@ class ChineseChess:
 
 
 
-
-
     # YELLOW HIGHTLIGHT(2nd modification)
 
     def highlight_piece(self, row, col):
@@ -1971,9 +2069,6 @@ class ChineseChess:
         )    
 
         self.decrease_size = False
-
-
-
 
     def evaluate_piece_safety(self, row, col, piece, color):
         """Evaluate how safe a piece is in its current position"""
@@ -2023,7 +2118,7 @@ class ChineseChess:
 
     def evaluate_king_safety(self, color):
         """Evaluate king safety and surrounding protection"""
-        kings = self.find_kings()
+        kings = self.game_rules.find_kings()
         king_pos = kings[1] if color == 'black' else kings[0]
         if not king_pos:
             return -9999
@@ -2041,7 +2136,7 @@ class ChineseChess:
                         safety += 30
         
         # Penalty for exposed king
-        if self.is_in_check(color):
+        if self.game_rules.is_in_check(color):
             safety -= 200
         
         return safety
@@ -2058,45 +2153,6 @@ class ChineseChess:
                             if self.game_rules.is_valid_move((from_row, from_col), (to_row, to_col)):
                                 moves.append(((from_row, from_col), (to_row, to_col)))
         return moves
-
-    def is_checkmate(self, color):
-        """
-        Check if the given color is in checkmate.
-        Returns True if the player has no legal moves to escape check.
-        """
-        
-        
-        # Try every possible move for every piece of the current player
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece and piece[0] == color[0].upper():  # If it's current player's piece
-                    # Try all possible destinations
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.game_rules.is_valid_move((row, col), (to_row, to_col)):
-                                # Try the move
-                                original_piece = self.board[to_row][to_col]
-                                self.board[to_row][to_col] = piece
-                                self.board[row][col] = None
-                                
-                                # Check if still in check
-                                still_in_check = self.is_in_check(color)
-                                
-                                # Undo the move
-                                self.board[row][col] = piece
-                                self.board[to_row][to_col] = original_piece
-                                
-                                # If any move gets out of check, not checkmate
-                                if not still_in_check:
-                                    return False
-        
-        # If no legal moves found, it's checkmate
-            
-        self.game_over = True  # Add this line
-
-        return True
-
 
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
@@ -2204,7 +2260,6 @@ class ChineseChess:
             
         # Redraw the board
         self.draw_board()
-        
         
     def _create_piece_section(self, frame, color_prefix, canvas_size):
         """Helper function to create piece section within a frame"""
@@ -2400,7 +2455,7 @@ class ChineseChess:
         # If there are two identical pieces in the same column
         if len(identical_positions) == 2:
             # Find opponent's king position
-            red_king_pos, black_king_pos = self.find_kings()
+            red_king_pos, black_king_pos = self.game_rules.find_kings()
             opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
             
             # Calculate distances to opponent's king for both pieces
@@ -2531,8 +2586,6 @@ class ChineseChess:
             self.move_text.config(state='disabled')
             self.move_text.see(tk.END)  # Scroll to the bottom
 
-
-
     def toggle_records(self):
         """Toggle the visibility of the records frame"""
 
@@ -2567,7 +2620,6 @@ class ChineseChess:
             # Bind click event to the move text widget
             self.move_text.bind('<Button-1>', self.on_record_click)
 
-
     def sound_effect(self,):
         self.sound_effect_on = not self.sound_effect_on
 
@@ -2581,7 +2633,6 @@ class ChineseChess:
             style='Custom.TButton'
         )
         self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
-
 
 
     # Add this new method to the ChineseChess class
@@ -2608,7 +2659,6 @@ class ChineseChess:
                 # Make sure the highlighted line is visible
                 self.move_text.see(start_pos)
 
-    # Modify the next_replay_move method to include the highlighting
     def next_replay_move(self):
         """Show next move in replay"""
         if not self.replay_mode or self.current_replay_index >= len(self.move_history):
@@ -2664,7 +2714,6 @@ class ChineseChess:
         
         self.draw_board()
 
-    # Also modify the prev_replay_move method to update the highlighting
     def prev_replay_move(self):
         """Show previous move in replay"""
         if not self.replay_mode or self.current_replay_index <= 0:
@@ -2740,7 +2789,6 @@ class ChineseChess:
         
         self.draw_board()
 
-    # Modify the start_replay method to clear any existing highlights
     def start_replay(self):
         """Start replay mode"""
 
@@ -2814,8 +2862,6 @@ class ChineseChess:
             self.move_history = self.rotate_move_history
             self.move_history_numbers = self.rotate_move_history_numbers
 
-            
-
     def end_replay(self):
         """End replay mode"""
         self.replay_mode = False
@@ -2826,7 +2872,6 @@ class ChineseChess:
         
         self.initialize_board()
         self.draw_board()
-        
 
     def initialize_board(self):
         # Initialize empty board
@@ -2873,7 +2918,6 @@ class ChineseChess:
             for pos, piece in black_pieces.items():
                 row, col = pos
                 self.board[9 - row][col] = piece
-
 
     def draw_board(self):
         # Clear canvas
@@ -3007,7 +3051,6 @@ class ChineseChess:
                 font=('Arial', 12)
             )
 
-
     def restart_game(self):
 
         
@@ -3063,75 +3106,6 @@ class ChineseChess:
             self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
 
 
-    # the following 3 functions (conbined with on_click function) is to add the CHECK feature
-    def find_kings(self):
-        """Find positions of both kings/generals"""
-        red_king_pos = black_king_pos = None
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece:
-                    if piece[1] == '帥':
-                        red_king_pos = (row, col)
-                    elif piece[1] == '將':
-                        black_king_pos = (row, col)
-        return red_king_pos, black_king_pos
-
-    def is_position_under_attack(self, pos, attacking_color):
-        """Check if a position is under attack by pieces of the given color"""
-        
-        # Check from all positions on the board
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece and piece[0] == attacking_color[0].upper():
-                    # Check if this piece can move to the target position
-                    if self.game_rules.is_valid_move((row, col), pos):
-                        return True
-        return False  
-
-    def is_generals_facing(self):
-        """Check if the two generals are facing each other directly"""
-        red_king_pos, black_king_pos = self.find_kings()
-        
-        # If either king is missing, return False
-        if not red_king_pos or not black_king_pos:
-            return False
-            
-        red_row, red_col = red_king_pos
-        black_row, black_col = black_king_pos
-        
-        # Check if generals are in the same column
-        if red_col != black_col:
-            return False
-            
-        # Check if there are any pieces between the generals
-        start_row = min(red_row, black_row) + 1
-        end_row = max(red_row, black_row)
-        
-        for row in range(start_row, end_row):
-            if self.board[row][red_col]:  # If there's any piece between
-                return False
-                
-        # If we get here, the generals are facing each other
-        return True
-
-    def is_in_check(self, color):
-        """Check if the king of the given color is in check"""
-        red_king_pos, black_king_pos = self.find_kings()
-        
-        if not red_king_pos or not black_king_pos:
-            return False
-        
-        # First check the special case of facing generals
-        if self.is_generals_facing():
-            return True  # Both kings are in check in this case
-        
-        # Then check the normal cases of being under attack
-        if color == 'red':
-            return self.is_position_under_attack(red_king_pos, 'black')
-        else:
-            return self.is_position_under_attack(black_king_pos, 'red')
 
     def run(self):
         self.window.mainloop()
