@@ -48,11 +48,7 @@ class GameRules:
         if self.state is None:
             return False
 
-        # Debug print
-        print(f"State at {from_row},{from_col}: {self.state[from_row][from_col]}")
-        
 
-            
         # Then check piece exists
         piece = self.state[from_row][from_col]
         if piece is None:
