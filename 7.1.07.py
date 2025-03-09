@@ -23,6 +23,94 @@ class GameRules:
 
 
 
+
+
+    def evaluate_piece_safety(self, row, col, piece, color):
+        """Evaluate how safe a piece is in its current position"""
+        safety_score = 0
+        piece_values = {
+            '將': 10000, '帥': 10000,
+            '車': 900,
+            '馬': 400,
+            '炮': 500,
+            '象': 200, '相': 200,
+            '士': 200, '仕': 200,
+            '卒': 100, '兵': 100
+        }
+        
+        # Check if the piece is under attack
+        is_attacked = False
+        defenders = 0
+        attackers = 0
+        
+        # Count attackers and defenders
+        for r in range(10):
+            for c in range(9):
+                checking_piece = self.state[r][c]
+                if checking_piece:
+                    if checking_piece[0] != color[0].upper():  # Enemy piece
+                        # If enemy can capture this piece
+                        if self.is_valid_move((r, c), (row, col)):
+                            attackers += 1
+                            is_attacked = True
+                            # Penalty based on value difference
+                            if piece_values[checking_piece[1]] < piece_values[piece[1]]:
+                                safety_score -= 50  # Extra penalty if threatened by lesser piece
+                    else:  # Friendly piece
+                        if self.is_valid_move((r, c), (row, col)):
+                            defenders += 1
+                            safety_score += 20  # Bonus for each defender
+        
+        # Heavy penalty if attacked and not defended
+        if is_attacked and defenders == 0:
+            safety_score -= 200
+        
+        # Bonus for defended pieces
+        if defenders > attackers:
+            safety_score += 100
+            
+        return safety_score
+
+    def evaluate_king_safety(self, color):
+        """Evaluate king safety and surrounding protection"""
+        kings = self.find_kings()
+        king_pos = kings[1] if color == 'black' else kings[0]
+        if not king_pos:
+            return -9999
+        
+        king_row, king_col = king_pos
+        safety = 0
+        
+        # Check protecting pieces
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r, c = king_row + dr, king_col + dc
+                if 0 <= r < 10 and 0 <= c < 9:
+                    piece = self.state[r][c]
+                    if piece and piece[0] == color[0].upper():
+                        safety += 30
+        
+        # Penalty for exposed king
+        if self.is_in_check(color):
+            safety -= 200
+        
+        return safety
+
+    def get_all_valid_moves(self, color):
+        """Get all valid moves for a given color"""
+        moves = []
+        for from_row in range(10):
+            for from_col in range(9):
+                piece = self.state[from_row][from_col]
+                if piece and piece[0] == color[0].upper():
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
+                                moves.append(((from_row, from_col), (to_row, to_col)))
+        return moves
+
+
+
     def find_kings(self):
         """Find positions of both kings/generals"""
         red_king_pos = black_king_pos = None
@@ -989,7 +1077,6 @@ class ChineseChess:
                 
                 self.draw_board()
 
-
     def on_record_click(self, event):
         """Handle clicks on the move records"""
         if not self.replay_mode:
@@ -1110,8 +1197,6 @@ class ChineseChess:
         if self.flipped:
             self.current_player = 'red'  # Set to red so AI plays as red
             self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
-
-
 
     def reset_available_pieces(self):
         """Reset the available pieces to their initial counts"""
@@ -1720,7 +1805,7 @@ class ChineseChess:
         ai_color = 'red' if self.flipped else 'black'
 
         # Get all valid moves for AI's color
-        moves = self.get_all_valid_moves(ai_color)
+        moves = self.game_rules.get_all_valid_moves(ai_color)
 
         if not moves:
             # Add this check to handle stalemate or other end conditions
@@ -1763,7 +1848,7 @@ class ChineseChess:
                 self.board = original_board
                 # Try to find a safe move from all valid moves
                 safe_moves = []
-                for move in self.get_all_valid_moves(self.current_player):
+                for move in self.game_rules.get_all_valid_moves(self.current_player):
                     from_pos, to_pos = move
                     # Test each move
                     test_board = copy.deepcopy(self.board)
@@ -2001,7 +2086,7 @@ class ChineseChess:
                                 position_bonus += 50
                     
                     # Calculate piece safety
-                    safety_score = self.evaluate_piece_safety(row, col, piece, color)
+                    safety_score = self.game_rules.evaluate_piece_safety(row, col, piece, color)
                     
                     if piece[0] == eval_prefix:  # Our pieces
                         score += value + position_bonus + safety_score
@@ -2036,8 +2121,8 @@ class ChineseChess:
         score += checkmate_score * 2  # Give high weight to checkmate potential
         
         # King safety evaluation - adjusted for color
-        king_safety = (self.evaluate_king_safety(color) - 
-                      self.evaluate_king_safety('red' if color == 'black' else 'black'))
+        king_safety = (self.game_rules.evaluate_king_safety(color) - 
+                      self.game_rules.evaluate_king_safety('red' if color == 'black' else 'black'))
         score += king_safety
         
         return score
@@ -2070,89 +2155,7 @@ class ChineseChess:
 
         self.decrease_size = False
 
-    def evaluate_piece_safety(self, row, col, piece, color):
-        """Evaluate how safe a piece is in its current position"""
-        safety_score = 0
-        piece_values = {
-            '將': 10000, '帥': 10000,
-            '車': 900,
-            '馬': 400,
-            '炮': 500,
-            '象': 200, '相': 200,
-            '士': 200, '仕': 200,
-            '卒': 100, '兵': 100
-        }
-        
-        # Check if the piece is under attack
-        is_attacked = False
-        defenders = 0
-        attackers = 0
-        
-        # Count attackers and defenders
-        for r in range(10):
-            for c in range(9):
-                checking_piece = self.board[r][c]
-                if checking_piece:
-                    if checking_piece[0] != color[0].upper():  # Enemy piece
-                        # If enemy can capture this piece
-                        if self.game_rules.is_valid_move((r, c), (row, col)):
-                            attackers += 1
-                            is_attacked = True
-                            # Penalty based on value difference
-                            if piece_values[checking_piece[1]] < piece_values[piece[1]]:
-                                safety_score -= 50  # Extra penalty if threatened by lesser piece
-                    else:  # Friendly piece
-                        if self.game_rules.is_valid_move((r, c), (row, col)):
-                            defenders += 1
-                            safety_score += 20  # Bonus for each defender
-        
-        # Heavy penalty if attacked and not defended
-        if is_attacked and defenders == 0:
-            safety_score -= 200
-        
-        # Bonus for defended pieces
-        if defenders > attackers:
-            safety_score += 100
-            
-        return safety_score
 
-    def evaluate_king_safety(self, color):
-        """Evaluate king safety and surrounding protection"""
-        kings = self.game_rules.find_kings()
-        king_pos = kings[1] if color == 'black' else kings[0]
-        if not king_pos:
-            return -9999
-        
-        king_row, king_col = king_pos
-        safety = 0
-        
-        # Check protecting pieces
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    piece = self.board[r][c]
-                    if piece and piece[0] == color[0].upper():
-                        safety += 30
-        
-        # Penalty for exposed king
-        if self.game_rules.is_in_check(color):
-            safety -= 200
-        
-        return safety
-
-    def get_all_valid_moves(self, color):
-        """Get all valid moves for a given color"""
-        moves = []
-        for from_row in range(10):
-            for from_col in range(9):
-                piece = self.board[from_row][from_col]
-                if piece and piece[0] == color[0].upper():
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if self.game_rules.is_valid_move((from_row, from_col), (to_row, to_col)):
-                                moves.append(((from_row, from_col), (to_row, to_col)))
-        return moves
 
     def switch_colors(self):
         """Switch the board orientation by rotating it 180 degrees"""
