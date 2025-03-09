@@ -1,11 +1,539 @@
 import tkinter as tk
 from tkinter import ttk
+import copy  # Add this import
+import random
 import os
 import pygame.mixer
+import math
+from typing import List, Tuple, Optional
+
+
+class GameRules:
+    def __init__(self, state=None, flipped=False):
+        self.state = state if state is not None else [[None] * 9 for _ in range(10)]
+        self.flipped = flipped
+        
+
+        # Ensure state is properly initialized
+        if state is None:
+            self.state = [[None] * 9 for _ in range(10)]
+        else:
+            self.state = state
+        self.flipped = flipped
+
+
+        
+    def is_valid_move(self, from_pos, to_pos):
+
+
+        # Guard against None inputs
+        if not from_pos or not to_pos:
+            return False
+        
+
+
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+
+
+        
+        if not (0 <= from_row < 10 and 0 <= from_col < 9):
+            return False
+        if not (0 <= to_row < 10 and 0 <= to_col < 9):
+            return False
+            
+
+
+        # Guard against None state
+        if self.state is None:
+            return False
+
+        # Debug print
+        print(f"State at {from_row},{from_col}: {self.state[from_row][from_col]}")
+        
+
+            
+        # Then check piece exists
+        piece = self.state[from_row][from_col]
+        if piece is None:
+            return False
+            
+        if self.state[to_row][to_col] and self.state[to_row][to_col][0] == piece[0]:
+            return False
+        
+        piece_type = piece[1]
+        
+        if piece_type == '帥' or piece_type == '將':
+            return self.is_valid_general_move(from_pos, to_pos)
+        elif piece_type == '仕' or piece_type == '士':
+            return self.is_valid_advisor_move(from_pos, to_pos)
+        elif piece_type == '相' or piece_type == '象':
+            return self.is_valid_elephant_move(from_pos, to_pos)
+        elif piece_type == '馬':
+            return self.is_valid_horse_move(from_pos, to_pos)
+        elif piece_type == '車':
+            return self.is_valid_chariot_move(from_pos, to_pos)
+        elif piece_type == '炮':
+            return self.is_valid_cannon_move(from_pos, to_pos)
+        elif piece_type == '兵' or piece_type == '卒':
+            return self.is_valid_pawn_move(from_pos, to_pos)
+        
+        return False
+
+    def is_valid_general_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.state[from_row][from_col]
+        
+        if piece[0] == 'R':
+            if not self.flipped:
+                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
+                    return False
+            else:
+                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
+                    return False
+        else:
+            if not self.flipped:
+                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
+                    return False
+            else:
+                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
+                    return False
+        
+        return abs(to_row - from_row) + abs(to_col - from_col) == 1
+
+    def is_valid_advisor_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.state[from_row][from_col]
+        
+        if piece[0] == 'R':
+            if not self.flipped:
+                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
+                    return False
+            else:
+                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
+                    return False
+        else:
+            if not self.flipped:
+                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
+                    return False
+            else:
+                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
+                    return False
+        
+        return abs(to_row - from_row) == 1 and abs(to_col - from_col) == 1
+
+    def is_valid_elephant_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.state[from_row][from_col]
+        
+        if piece[0] == 'R':
+            if not self.flipped:
+                if to_row < 5:
+                    return False
+            else:
+                if to_row > 4:
+                    return False
+        else:
+            if not self.flipped:
+                if to_row > 4:
+                    return False
+            else:
+                if to_row < 5:
+                    return False
+        
+        if abs(to_row - from_row) != 2 or abs(to_col - from_col) != 2:
+            return False
+        
+        blocking_row = (from_row + to_row) // 2
+        blocking_col = (from_col + to_col) // 2
+        return not self.state[blocking_row][blocking_col]
+
+    def is_valid_horse_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        
+        row_diff = abs(to_row - from_row)
+        col_diff = abs(to_col - from_col)
+        if not ((row_diff == 2 and col_diff == 1) or (row_diff == 1 and col_diff == 2)):
+            return False
+        
+        if row_diff == 2:
+            blocking_row = from_row + (1 if to_row > from_row else -1)
+            return not self.state[blocking_row][from_col]
+        else:
+            blocking_col = from_col + (1 if to_col > from_col else -1)
+            return not self.state[from_row][blocking_col]
+
+    def is_valid_chariot_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        
+        if from_row != to_row and from_col != to_col:
+            return False
+        
+        if from_row == to_row:
+            start_col = min(from_col, to_col) + 1
+            end_col = max(from_col, to_col)
+            return not any(self.state[from_row][col] for col in range(start_col, end_col))
+        else:
+            start_row = min(from_row, to_row) + 1
+            end_row = max(from_row, to_row)
+            return not any(self.state[row][from_col] for row in range(start_row, end_row))
+
+    def is_valid_cannon_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        
+        if from_row != to_row and from_col != to_col:
+            return False
+        
+        pieces_between = 0
+        if from_row == to_row:
+            start_col = min(from_col, to_col) + 1
+            end_col = max(from_col, to_col)
+            pieces_between = sum(1 for col in range(start_col, end_col) if self.state[from_row][col])
+        else:
+            start_row = min(from_row, to_row) + 1
+            end_row = max(from_row, to_row)
+            pieces_between = sum(1 for row in range(start_row, end_row) if self.state[row][from_col])
+        
+        return pieces_between == 1 if self.state[to_row][to_col] else pieces_between == 0
+
+    def is_valid_pawn_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.state[from_row][from_col]
+        
+        if piece[0] == 'R':
+            if not self.flipped:
+                if from_row > 4:
+                    return to_col == from_col and to_row == from_row - 1
+                else:
+                    return (to_col == from_col and to_row == from_row - 1) or \
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+            else:
+                if from_row < 5:
+                    return to_col == from_col and to_row == from_row + 1
+                else:
+                    return (to_col == from_col and to_row == from_row + 1) or \
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+        else:
+            if not self.flipped:
+                if from_row < 5:
+                    return to_col == from_col and to_row == from_row + 1
+                else:
+                    return (to_col == from_col and to_row == from_row + 1) or \
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+            else:
+                if from_row > 4:
+                    return to_col == from_col and to_row == from_row - 1
+                else:
+                    return (to_col == from_col and to_row == from_row - 1) or \
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+
+class MCTSNode:
+    def __init__(self, state, game_rules, parent=None, move=None, player=None):
+        self.state = state
+        self.game_rules = game_rules  # Add reference to game rules
+
+        self.parent = parent
+        self.move = move
+        self.player = player
+        self.children = []
+        self.wins = 0
+        self.visits = 0
+        self.untried_moves = None
+        self.flipped = False
+
+    def simulate(self, node):
+        # Update to use game_rules
+        state = copy.deepcopy(node.state)
+        current_player = node.player
+        depth = 0
+        max_depth = 50
+
+        while depth < max_depth:
+            valid_moves = []
+            for row in range(10):
+                for col in range(9):
+                    piece = state[row][col]
+                    if piece and piece[0] == current_player[0].upper():
+                        for to_row in range(10):
+                            for to_col in range(9):
+                                move = ((row, col), (to_row, to_col))
+                                # Use game_rules instead of direct method call
+                                if self.game_rules.is_valid_move(move[0], move[1], state, self.flipped):
+                                    valid_moves.append(move)
+
+    @staticmethod
+    def get_piece_value(piece_type):
+        """Get the relative value of a piece"""
+        values = {
+            '將': 1000, '帥': 1000,
+            '車': 90,
+            '馬': 40,
+            '炮': 45,
+            '象': 20, '相': 20,
+            '士': 20, '仕': 20,
+            '卒': 10, '兵': 10
+        }
+        return values.get(piece_type, 0)
+
+    def evaluate_final_position(self, state, player):
+        """Evaluate the final position of the simulation"""
+        score = 0
+        opponent = 'black' if player == 'red' else 'red'
+        
+        for row in range(10):
+            for col in range(9):
+                piece = state[row][col]
+                if piece:
+                    value = self.get_piece_value(piece[1])
+                    if piece[0] == player[0].upper():
+                        score += value
+                    else:
+                        score -= value
+        
+        return 1 if score > 0 else 0
+
+    def UCB1(self, exploration_constant=1.414):
+        """Calculate the UCB1 value for this node"""
+        if self.visits == 0:
+            return float('inf')
+        if not self.parent:
+            return float('-inf')
+        return (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
+
+    def get_untried_moves(self):
+        """Get list of untried moves from this state"""
+
+
+        
+        if self.untried_moves is None:
+            self.untried_moves = []
+            for row in range(10):
+                for col in range(9):
+                    piece = self.state[row][col]
+                    if piece and piece[0] == self.player[0].upper():
+                        for to_row in range(10):
+                            for to_col in range(9):
+                                from_pos = (row, col)
+                                to_pos = (to_row, to_col)
+                                if self.game_rules.is_valid_move(from_pos, to_pos):
+                                    self.untried_moves.append((from_pos, to_pos))
+        return self.untried_moves
+
+    def select_child(self):
+        """Select the child with the highest UCB1 value"""
+        return max(self.children, key=lambda c: c.UCB1())
+
+class MCTS:
+    def __init__(self, initial_state, game_rules, player, iterations=1000):
+        self.state = initial_state  # Add state attribute
+        self.root = MCTSNode(initial_state, game_rules, player=player)
+        self.iterations = iterations
+        self.game_rules = game_rules
+
+
+    def select(self):
+        node = self.root
+        # Use get_untried_moves instead of get_valid_moves
+        while node.get_untried_moves() == [] and node.children:
+            node = max(node.children, key=lambda n: n.UCB1())
+        return node
+
+    def expand(self, node):
+        moves = node.get_untried_moves()
+        if not moves:
+            return None
+            
+        move = random.choice(moves)
+        node.untried_moves.remove(move)
+        
+        # Create new state
+        new_state = copy.deepcopy(node.state)
+        from_pos, to_pos = move
+        new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
+        new_state[from_pos[0]][from_pos[1]] = None
+        
+        # Switch player
+        new_player = 'black' if node.player == 'red' else 'red'
+        child = MCTSNode(new_state, self.game_rules, parent=node, move=move, player=new_player)
+        node.children.append(child)
+        return child
+
+    def simulate(self, node):
+        state = copy.deepcopy(node.state)
+        current_player = node.player
+        
+        # Simulate random moves until game end or max depth
+        max_depth = 50
+        depth = 0
+        
+        while depth < max_depth:
+            # Get all valid moves for current player
+            valid_moves = []
+            for row in range(10):
+                for col in range(9):
+                    piece = state[row][col]
+                    if piece and piece[0] == current_player[0].upper():
+                        for to_row in range(10):
+                            for to_col in range(9):
+                                if self.is_valid_move(state, (row, col), (to_row, to_col)):
+                                    valid_moves.append(((row, col), (to_row, to_col)))
+            
+            if not valid_moves:
+                break
+                
+            # Make random move
+            from_pos, to_pos = random.choice(valid_moves)
+            state[to_pos[0]][to_pos[1]] = state[from_pos[0]][from_pos[1]]
+            state[from_pos[0]][from_pos[1]] = None
+            
+            current_player = 'black' if current_player == 'red' else 'red'
+            depth += 1
+        
+        # Return 1 for win, 0 for loss
+        return 1 if current_player != self.root.player else 0
+
+    def backpropagate(self, node, result):
+        while node:
+            node.visits += 1
+            node.wins += result
+            node = node.parent
+            result = 1 - result
+
+
+
+    def find_kings(self):
+        """Find positions of both kings on the board"""
+        red_king_pos = None
+        black_king_pos = None
+        
+        for row in range(10):
+            for col in range(9):
+                piece = self.root.state[row][col]
+                if piece:
+                    if piece == 'R帥':
+                        red_king_pos = (row, col)
+                    elif piece == 'B將':
+                        black_king_pos = (row, col)
+                        
+        return red_king_pos, black_king_pos
+
+    def is_generals_facing(self):
+        """Check if the two generals are facing each other"""
+        red_king_pos, black_king_pos = self.find_kings()
+        
+        if not (red_king_pos and black_king_pos):
+            return False
+            
+        if red_king_pos[1] != black_king_pos[1]:
+            return False
+            
+        # Check if there are any pieces between the generals
+        col = red_king_pos[1]
+        start_row = min(red_king_pos[0], black_king_pos[0]) + 1
+        end_row = max(red_king_pos[0], black_king_pos[0])
+        
+        return not any(self.root.state[row][col] for row in range(start_row, end_row))
+
+    def is_position_under_attack(self, pos, by_player):
+        """Check if a position is under attack by the specified player"""
+        for row in range(10):
+            for col in range(9):
+                piece = self.state[row][col]
+                if piece and piece[0] == by_player[0].upper():
+                    if self.game_rules.is_valid_move((row, col), pos):
+                        return True
+        return False
+
+    def is_in_check(self, color):
+        """Check if the king of the given color is in check"""
+        red_king_pos, black_king_pos = self.find_kings()
+        
+        if not red_king_pos or not black_king_pos:
+            return False
+        
+        # First check the special case of facing generals
+        if self.is_generals_facing():
+            return True  # Both kings are in check in this case
+        
+        # Then check the normal cases of being under attack
+        if color == 'red':
+            return self.is_position_under_attack(red_king_pos, 'black')
+        else:
+            return self.is_position_under_attack(black_king_pos, 'red')
+
+    def get_best_move(self):
+        for _ in range(self.iterations):
+            node = self.select()
+            child = self.expand(node)
+            if child:
+                # Create a temporary state to test if the move puts us in check
+                test_state = copy.deepcopy(self.root.state)
+                from_pos, to_pos = child.move
+                test_state[to_pos[0]][to_pos[1]] = test_state[from_pos[0]][from_pos[1]]
+                test_state[from_pos[0]][from_pos[1]] = None
+                
+                # Check if our move puts our own king in check
+                if not self.is_in_check(self.root.player):
+                    result = self.simulate(child)
+                    self.backpropagate(child, result)
+            else:
+                result = self.simulate(node)
+                self.backpropagate(node, result)
+
+        if not self.root.children:
+            # Fallback to random valid move if no good moves found
+            valid_moves = []
+            for row in range(10):
+                for col in range(9):
+                    piece = self.root.state[row][col]
+                    if piece and piece[0] == self.root.player[0].upper():
+                        for to_row in range(10):
+                            for to_col in range(9):
+                                move = ((row, col), (to_row, to_col))
+                                if self.root.is_valid_move(move[0], move[1]):
+                                    # Test if move doesn't leave us in check
+                                    test_state = copy.deepcopy(self.root.state)
+                                    test_state[to_row][to_col] = test_state[row][col]
+                                    test_state[row][col] = None
+                                    if not self.is_in_check(self.root.player):
+                                        valid_moves.append(move)
+            return random.choice(valid_moves) if valid_moves else None
+
+        # Return the move with the highest visit count
+        best_child = max(self.root.children, key=lambda c: c.visits)
+        return best_child.move
+
+
+    @staticmethod
+    def is_valid_move(state, from_pos, to_pos):
+        # Copy the move validation logic from MCTSNode class
+        # This is a simplified version for simulation
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = state[from_row][from_col]
+        
+        if not (0 <= to_row < 10 and 0 <= to_col < 9):
+            return False
+            
+        if state[to_row][to_col] and state[to_row][to_col][0] == piece[0]:
+            return False
+            
+        return True
+
 
 class ChineseChess:
 
     def __init__(self):
+           
+        self.board = self.initialize_board()
+        self.game_rules = GameRules(state=self.board)  # Add this line
            
         # Add at the beginning of __init__
         self.piece_setting_mode = False
@@ -307,6 +835,53 @@ class ChineseChess:
         # Bind mouse event
         self.canvas.bind('<Button-1>', self.on_click)
 
+
+
+    def handle_click(self, event):
+        """Handle mouse click events on the board"""
+        # Calculate board position from pixel coordinates
+        col = (event.x - self.margin) // self.cell_size
+        row = (event.y - self.margin) // self.cell_size
+        
+        # Ensure click is within board bounds
+        if not (0 <= row < 10 and 0 <= col < 9):
+            return
+            
+        clicked_piece = self.board[row][col]
+        
+        # If no piece is currently selected
+        if not self.selected_piece:
+            # Only allow selection of current player's pieces
+            if clicked_piece and clicked_piece[0] == self.current_player[0].upper():
+                self.selected_piece = (row, col)
+                self.highlighted_positions = [(row, col)]
+                self.draw_board()
+                
+        # If a piece is already selected
+        else:
+            start_row, start_col = self.selected_piece
+            
+            # If clicking on another piece of the same color, select that piece instead
+            if (clicked_piece and 
+                clicked_piece[0] == self.current_player[0].upper()):
+                self.selected_piece = (row, col)
+                self.highlighted_positions = [(row, col)]
+                self.draw_board()
+                
+            # If clicking on a valid move position
+            elif self.game_rules.is_valid_move(self.selected_piece, (row, col)):
+                # Make the move
+                self.board[row][col] = self.board[start_row][start_col]
+                self.board[start_row][start_col] = None
+                
+                # Reset selection
+                self.selected_piece = None
+                self.highlighted_positions = []
+                
+                # Switch players
+                self.current_player = 'black' if self.current_player == 'red' else 'red'
+                
+                self.draw_board()
 
 
     def on_record_click(self, event):
@@ -809,7 +1384,6 @@ class ChineseChess:
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
 
-
         if self.piece_setting_mode:
             # Convert click coordinates to board position
             col = round((event.x - self.board_margin) / self.cell_size)
@@ -917,7 +1491,6 @@ class ChineseChess:
                 
             return  # Exit the function early to prevent normal game logic
 
-
         if self.replay_mode or self.game_over:  # Add game_over check
             return  # Ignore clicks when game is over or in replay mode
         
@@ -940,7 +1513,7 @@ class ChineseChess:
                     self.highlighted_positions = [(row, col)]  # Reset highlights for new selection
                     self.draw_board()
                 # If clicking on a valid move position
-                elif self.is_valid_move(self.selected_piece, (row, col)):
+                elif self.game_rules.is_valid_move(self.selected_piece, (row, col)):
                     # Store the current state to check for check
                     original_piece = self.board[row][col]
                     
@@ -1022,8 +1595,7 @@ class ChineseChess:
                 self.draw_board()        
 
     def make_ai_move(self):
-        import time
-        
+
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
         
@@ -1032,83 +1604,93 @@ class ChineseChess:
                             
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
-        start_time = time.time()
-        max_time = 5.0  # Reduced from 10.0 to make moves faster
-                        
-        best_score = float('-inf')
-        best_move = None
-        best_moving_piece = None
-        
+               
         # Get AI's color based on board orientation
         ai_color = 'red' if self.flipped else 'black'
-        
+
         # Get all valid moves for AI's color
         moves = self.get_all_valid_moves(ai_color)
+
         if not moves:
             # Add this check to handle stalemate or other end conditions
             if self.is_in_check(ai_color):
                 self.game_over = True
                 self.handle_game_end()
             return
-                
-        # Sort moves by preliminary evaluation
-        moves.sort(key=self._move_sorting_score, reverse=True)
-        
-        # Check if opponent is in check
+
         opponent_color = 'black' if ai_color == 'red' else 'red'
-        is_check = self.is_in_check(opponent_color)
-        max_depth = 6 if is_check else 4  # Search deeper when opponent is in check
-        
-        # Iterative deepening
-        for search_depth in range(2, max_depth + 1):
-            if time.time() - start_time > max_time:
-                break
+
+        # Initialize MCTS with current board state
+        mcts = MCTS(
+            initial_state=copy.deepcopy(self.board),
+            game_rules=self,  # Pass the game class instance as it contains rules
+            player=self.current_player,
+            iterations=1000
+        )
             
-            alpha = float('-inf')
-            beta = float('inf')
+        # Get the best move from MCTS
+        best_move = mcts.get_best_move()
             
-            for from_pos, to_pos in moves:
-                if time.time() - start_time > max_time:
-                    break
-                
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                
-                # Make temporary move
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check(ai_color):
-                    score = self.minimax(search_depth - 1, alpha, beta, False)
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_move = (from_pos, to_pos)
-                        best_moving_piece = moving_piece
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-        
         # Make the best move found
         if best_move:
-            from_pos, to_pos = best_move
-            # Make the actual move
-            self.board[to_pos[0]][to_pos[1]] = best_moving_piece
-
-            self.board[from_pos[0]][from_pos[1]] = None
-                                                
+            start_pos, end_pos = best_move
+            
+            # Test if the move is safe (doesn't put own king in check)
+            test_board = copy.deepcopy(self.board)
+            test_board[end_pos[0]][end_pos[1]] = test_board[start_pos[0]][start_pos[1]]
+            test_board[start_pos[0]][start_pos[1]] = None
+            
+            # Store current board state
+            original_board = copy.deepcopy(self.board)
+            
+            # Temporarily make the move to test
+            self.board = test_board
+            
+            # Check if the move puts own king in check
+            if self.is_in_check(self.current_player):
+                # Restore original board and find another move
+                self.board = original_board
+                # Try to find a safe move from all valid moves
+                safe_moves = []
+                for move in self.get_all_valid_moves(self.current_player):
+                    from_pos, to_pos = move
+                    # Test each move
+                    test_board = copy.deepcopy(self.board)
+                    test_board[to_pos[0]][to_pos[1]] = test_board[from_pos[0]][from_pos[1]]
+                    test_board[from_pos[0]][from_pos[1]] = None
+                    self.board = test_board
+                    if not self.is_in_check(self.current_player):
+                        safe_moves.append(move)
+                    self.board = original_board
+                
+                if safe_moves:
+                    # Choose a random safe move
+                    start_pos, end_pos = random.choice(safe_moves)
+                else:
+                    # No safe moves available
+                    self.game_over = True
+                    self.handle_game_end()
+                    return
+            
+            # Restore original board and make the chosen move
+            self.board = original_board
+            
+            # Make the move
+            self.board[end_pos[0]][end_pos[1]] = self.board[start_pos[0]][start_pos[1]]
+            self.board[start_pos[0]][start_pos[1]] = None
+            
+            # Update highlights and history
+            self.highlighted_positions = [start_pos, end_pos]
+                            
+            # Add move to records and history
+            self.add_move_to_records(start_pos, end_pos, self.board[end_pos[0]][end_pos[1]])
+            self.add_move_to_history(start_pos, end_pos, self.board[end_pos[0]][end_pos[1]])
+                                   
             # Play move sound
             if self.sound_effect_on:
-                                            
                 if hasattr(self, 'move_sound') and self.move_sound:
                     self.move_sound.play()
-                                
-            # Update game state
-            self.highlighted_positions = [from_pos, to_pos]
-    
-            self.add_move_to_records(from_pos, to_pos, best_moving_piece)
-
+                       
             # Switch to opponent's turn
             self.current_player = opponent_color
             
@@ -1134,12 +1716,9 @@ class ChineseChess:
             else:
                 self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
 
-            # Add this line to record the AI move
-            self.add_move_to_history(from_pos, to_pos, best_moving_piece)
-
             # Update display
             self.draw_board()
-                              
+
         # Check if the opponent is now in checkmate
         if self.is_checkmate(self.current_player):
             self.handle_game_end()
@@ -1149,60 +1728,7 @@ class ChineseChess:
         if not self.is_checkmate(opponent_color):
             self.game_over = False  # Explicitly set game_over to False if not checkmate
        
-
     
-    def minimax(self, depth, alpha, beta, maximizing_player):
-        """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
-        
-        if depth == 0:
-            return self.evaluate_position_simple('red' if self.flipped else 'black')
-        
-        if maximizing_player:
-            max_eval = float('-inf')
-            moves = self.get_all_valid_moves('black')
-            
-            for from_pos, to_pos in moves:
-                # Store and make move
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('black'):
-                    eval = self.minimax(depth - 1, alpha, beta, False)
-                    max_eval = max(max_eval, eval)
-                    alpha = max(alpha, eval)
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-                
-                if beta <= alpha:
-                    break
-            return max_eval if max_eval != float('-inf') else self.evaluate_position_simple()
-        else:
-            min_eval = float('inf')
-            moves = self.get_all_valid_moves('red')
-            
-            for from_pos, to_pos in moves:
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('red'):
-                    eval = self.minimax(depth - 1, alpha, beta, True)
-                    min_eval = min(min_eval, eval)
-                    beta = min(beta, eval)
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-                
-                if beta <= alpha:
-                    break
-            return min_eval if min_eval != float('inf') else self.evaluate_position_simple()
-
     def evaluate_checkmate_potential(self, color):
         """Evaluate how close we are to achieving checkmate"""
         opposing_color = 'red' if color == 'black' else 'black'
@@ -2523,269 +3049,6 @@ class ChineseChess:
             self.current_player = 'red'  # Set to red so AI plays as red
             self.window.after(100, self.make_ai_move)  # Small delay to ensure board is redrawn first
 
-
-    # Add piece movement validation(8 functions)
-
-    def is_valid_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.board[from_row][from_col]
-        
-        # Basic validation
-        if not (0 <= to_row < 10 and 0 <= to_col < 9):
-            return False
-            
-        # Can't capture own pieces
-        if self.board[to_row][to_col] and self.board[to_row][to_col][0] == piece[0]:
-            return False
-        
-        # Get piece type (second character of the piece string)
-        piece_type = piece[1]
-        
-        # Check specific piece movement rules
-        if piece_type == '帥' or piece_type == '將':  # General/King
-            return self.is_valid_general_move(from_pos, to_pos)
-        elif piece_type == '仕' or piece_type == '士':  # Advisor
-            return self.is_valid_advisor_move(from_pos, to_pos)
-        elif piece_type == '相' or piece_type == '象':  # Elephant
-            return self.is_valid_elephant_move(from_pos, to_pos)
-        elif piece_type == '馬':  # Horse
-            return self.is_valid_horse_move(from_pos, to_pos)
-        elif piece_type == '車':  # Chariot
-            return self.is_valid_chariot_move(from_pos, to_pos)
-        elif piece_type == '炮':  # Cannon
-            return self.is_valid_cannon_move(from_pos, to_pos)
-        elif piece_type == '兵' or piece_type == '卒':  # Pawn
-            return self.is_valid_pawn_move(from_pos, to_pos)
-        
-        return False
-
-    def is_valid_general_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.board[from_row][from_col]
-        
-        # Check if move is within palace (3x3 grid)
-        if piece[0] == 'R':  # Red general
-            if not self.flipped:
-
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-            else:
-
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-            
-        else:  # Black general
-            if not self.flipped:
-                    
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-            else:
-                    
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-        
-        # Can only move one step horizontally or vertically
-        if abs(to_row - from_row) + abs(to_col - from_col) != 1:
-            return False
-            
-        return True
-
-    def is_valid_advisor_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.board[from_row][from_col]
-        
-        # Check if move is within palace
-        if piece[0] == 'R':  # Red advisor
-            if not self.flipped:
-                    
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-            else:
-                    
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-        else:  # Black advisor
-            if not self.flipped:
-                    
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-            else:
-                    
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-        
-        # Must move exactly one step diagonally
-        if abs(to_row - from_row) != 1 or abs(to_col - from_col) != 1:
-            return False
-            
-        return True
-
-    def is_valid_elephant_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.board[from_row][from_col]
-        
-        # Cannot cross river
-        if piece[0] == 'R':  # Red elephant
-            if not self.flipped:
-                    
-                if to_row < 5:  # Cannot cross river
-                    return False
-            else:
-                    
-                if to_row > 4:  # Cannot cross river
-                    return False
-        else:  # Black elephant
-            if not self.flipped:
-                    
-                if to_row > 4:  # Cannot cross river
-                    return False
-            else:
-                    
-                if to_row < 5:  # Cannot cross river
-                    return False
-        
-        # Must move exactly two steps diagonally
-        if abs(to_row - from_row) != 2 or abs(to_col - from_col) != 2:
-            return False
-        
-        # Check if there's a piece blocking the elephant's path
-        blocking_row = (from_row + to_row) // 2
-        blocking_col = (from_col + to_col) // 2
-        if self.board[blocking_row][blocking_col]:
-            return False
-            
-        return True
-
-    def is_valid_horse_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        
-        # Must move in an L-shape (2 steps in one direction, 1 step in perpendicular direction)
-        row_diff = abs(to_row - from_row)
-        col_diff = abs(to_col - from_col)
-        if not ((row_diff == 2 and col_diff == 1) or (row_diff == 1 and col_diff == 2)):
-            return False
-        
-        # Check for blocking piece
-        if row_diff == 2:
-            blocking_row = from_row + (1 if to_row > from_row else -1)
-            if self.board[blocking_row][from_col]:
-                return False
-        else:
-            blocking_col = from_col + (1 if to_col > from_col else -1)
-            if self.board[from_row][blocking_col]:
-                return False
-                
-        return True
-
-    def is_valid_chariot_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        
-        # Must move horizontally or vertically
-        if from_row != to_row and from_col != to_col:
-            return False
-        
-        # Check if path is clear
-        if from_row == to_row:  # Horizontal move
-            start_col = min(from_col, to_col) + 1
-            end_col = max(from_col, to_col)
-            for col in range(start_col, end_col):
-                if self.board[from_row][col]:
-                    return False
-        else:  # Vertical move
-            start_row = min(from_row, to_row) + 1
-            end_row = max(from_row, to_row)
-            for row in range(start_row, end_row):
-                if self.board[row][from_col]:
-                    return False
-                    
-        return True
-
-    def is_valid_cannon_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        
-        # Must move horizontally or vertically
-        if from_row != to_row and from_col != to_col:
-            return False
-        
-        # Count pieces between from and to positions
-        pieces_between = 0
-        if from_row == to_row:  # Horizontal move
-            start_col = min(from_col, to_col) + 1
-            end_col = max(from_col, to_col)
-            for col in range(start_col, end_col):
-                if self.board[from_row][col]:
-                    pieces_between += 1
-        else:  # Vertical move
-            start_row = min(from_row, to_row) + 1
-            end_row = max(from_row, to_row)
-            for row in range(start_row, end_row):
-                if self.board[row][from_col]:
-                    pieces_between += 1
-        
-        # If capturing, need exactly one piece between
-        if self.board[to_row][to_col]:
-            return pieces_between == 1
-        # If not capturing, path must be clear
-        return pieces_between == 0
-
-    def is_valid_pawn_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.board[from_row][from_col]
-        
-        if piece[0] == 'R':  # Red pawn
-
-            if not self.flipped:
-
-                # Before crossing river
-                if from_row > 4:
-                    # Can only move forward (up)
-                    return to_col == from_col and to_row == from_row - 1
-                # After crossing river
-                else:
-                    # Can move forward or sideways
-                    return (to_col == from_col and to_row == from_row - 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
-            else:
-                # Before crossing river
-                if from_row < 5:
-                    # Can only move forward (down)
-                    return to_col == from_col and to_row == from_row + 1
-                # After crossing river
-                else:
-                    # Can move forward or sideways
-                    return (to_col == from_col and to_row == from_row + 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
-        else:  # Black pawn
-            if not self.flipped:
-
-                # Before crossing river
-                if from_row < 5:
-                    # Can only move forward (down)
-                    return to_col == from_col and to_row == from_row + 1
-                
-                # After crossing river
-                else:
-                    # Can move forward or sideways
-                    return (to_col == from_col and to_row == from_row + 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
-            else:
-                # Before crossing river
-                if from_row > 4:
-                    # Can only move forward (up)
-                    return to_col == from_col and to_row == from_row - 1
-                # After crossing river
-                else:
-                    # Can move forward or sideways
-                    return (to_col == from_col and to_row == from_row - 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
 
     # the following 3 functions (conbined with on_click function) is to add the CHECK feature
     def find_kings(self):
