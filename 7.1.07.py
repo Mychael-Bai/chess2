@@ -1630,8 +1630,8 @@ class ChineseChess:
                         # Make the move temporarily
                         self.board[row][col] = self.board[start_row][start_col]
                         self.board[start_row][start_col] = None
-                        self.game_rules.state = self.board
                         
+                        self.game_rules.state = self.board
                         # Check if the move puts own king in check
                         if self.game_rules.is_in_check(self.current_player):
                             # Undo the move if it puts own king in check
