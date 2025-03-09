@@ -12,7 +12,9 @@ class GameRules:
     def __init__(self, state=None, flipped=False):
         self.state = state if state is not None else [[None] * 9 for _ in range(10)]
         self.flipped = flipped
-        
+        self.board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board
+
+        self.game_rules.state = self.board
 
         # Ensure state is properly initialized
         if state is None:
@@ -378,7 +380,7 @@ class MCTS:
                     if piece and piece[0] == current_player[0].upper():
                         for to_row in range(10):
                             for to_col in range(9):
-                                if self.is_valid_move(state, (row, col), (to_row, to_col)):
+                                if self.game_rules.is_valid_move(state, (row, col), (to_row, to_col)):
                                     valid_moves.append(((row, col), (to_row, to_col)))
             
             if not valid_moves:
@@ -1770,7 +1772,7 @@ class ChineseChess:
                 r, c = king_row + dr, king_col + dc
                 if 0 <= r < 10 and 0 <= c < 9:
                     if (r, c) != (king_row, king_col):
-                        if self.is_valid_move((king_row, king_col), (r, c)):
+                        if self.game_rules.is_valid_move((king_row, king_col), (r, c)):
                             # Try the move
                             original_piece = self.board[r][c]
                             self.board[r][c] = self.board[king_row][king_col]
@@ -1829,7 +1831,7 @@ class ChineseChess:
                     for dc in [-1, 0, 1]:
                         r, c = king_row + dr, king_col + dc
                         if 0 <= r < 10 and 0 <= c < 9:
-                            if self.is_valid_move((king_row, king_col), (r, c)):
+                            if self.game_rules.is_valid_move((king_row, king_col), (r, c)):
                                 escape_moves += 1
             score += (9 - escape_moves) * 100
         
@@ -1991,14 +1993,14 @@ class ChineseChess:
                 if checking_piece:
                     if checking_piece[0] != color[0].upper():  # Enemy piece
                         # If enemy can capture this piece
-                        if self.is_valid_move((r, c), (row, col)):
+                        if self.game_rules.is_valid_move((r, c), (row, col)):
                             attackers += 1
                             is_attacked = True
                             # Penalty based on value difference
                             if piece_values[checking_piece[1]] < piece_values[piece[1]]:
                                 safety_score -= 50  # Extra penalty if threatened by lesser piece
                     else:  # Friendly piece
-                        if self.is_valid_move((r, c), (row, col)):
+                        if self.game_rules.is_valid_move((r, c), (row, col)):
                             defenders += 1
                             safety_score += 20  # Bonus for each defender
         
@@ -2046,7 +2048,7 @@ class ChineseChess:
                 if piece and piece[0] == color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self.is_valid_move((from_row, from_col), (to_row, to_col)):
+                            if self.game_rules.is_valid_move((from_row, from_col), (to_row, to_col)):
                                 moves.append(((from_row, from_col), (to_row, to_col)))
         return moves
 
@@ -2065,7 +2067,7 @@ class ChineseChess:
                     # Try all possible destinations
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self.is_valid_move((row, col), (to_row, to_col)):
+                            if self.game_rules.is_valid_move((row, col), (to_row, to_col)):
                                 # Try the move
                                 original_piece = self.board[to_row][to_col]
                                 self.board[to_row][to_col] = piece
@@ -3077,7 +3079,7 @@ class ChineseChess:
                 piece = self.board[row][col]
                 if piece and piece[0] == attacking_color[0].upper():
                     # Check if this piece can move to the target position
-                    if self.is_valid_move((row, col), pos):
+                    if self.game_rules.is_valid_move((row, col), pos):
                         return True
         return False  
 
