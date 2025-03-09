@@ -12,9 +12,6 @@ class GameRules:
     def __init__(self, state=None, flipped=False):
         self.state = state if state is not None else [[None] * 9 for _ in range(10)]
         self.flipped = flipped
-        self.board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board
-
-        self.game_rules.state = self.board
 
         # Ensure state is properly initialized
         if state is None:
@@ -532,10 +529,11 @@ class ChineseChess:
            
         self.flipped = False  # False means red at bottom, True means black at bottom
         self.board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board
-        self.setup_pieces()  # Set up the initial pieces
 
-        self.game_rules = GameRules(state=self.board)  # Add this line
-           
+        self.game_rules = GameRules(state=self.board, flipped=self.flipped)
+        self.setup_pieces()  # Set up the initial pieces
+        self.game_rules.state = self.board
+
         # Add at the beginning of __init__
         self.piece_setting_mode = False
         self.piece_to_place = None
@@ -1526,6 +1524,7 @@ class ChineseChess:
                         # Make the move temporarily
                         self.board[row][col] = self.board[start_row][start_col]
                         self.board[start_row][start_col] = None
+                        self.game_rules.state = self.board
                         
                         # Check if the move puts own king in check
                         if self.is_in_check(self.current_player):
@@ -1665,6 +1664,8 @@ class ChineseChess:
                     test_board[to_pos[0]][to_pos[1]] = test_board[from_pos[0]][from_pos[1]]
                     test_board[from_pos[0]][from_pos[1]] = None
                     self.board = test_board
+                    self.game_rules.state = self.board
+                    
                     if not self.is_in_check(self.current_player):
                         safe_moves.append(move)
                     self.board = original_board
