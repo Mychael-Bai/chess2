@@ -15,6 +15,8 @@ class MCTSNode:
         self.state = state  # Add state attribute
         self.flip_state = flip_state
 
+        self.game_rules = ChineseChess()
+
         self.parent = parent
         self.move = move
         self.player = player
@@ -26,11 +28,9 @@ class MCTSNode:
     def simulate(self):
         current_state = copy.deepcopy(self.state)
         current_player = self.player
-        game_rules = self.game_rules
         
         depth = 0
         while depth < 50:  # Prevent infinite games
-            game_rules.state = current_state
             valid_moves = []
             
             # Get valid moves that don't put own king in check
@@ -42,15 +42,13 @@ class MCTSNode:
                             for to_col in range(9):
                                 from_pos = (row, col)
                                 to_pos = (to_row, to_col)
-                                if game_rules.is_valid_move(from_pos, to_pos):
+                                if self.game_rules.is_valid_move(from_pos, to_pos):
                                     # Test move
                                     test_state = copy.deepcopy(current_state)
                                     test_state[to_pos[0]][to_pos[1]] = test_state[from_pos[0]][from_pos[1]]
                                     test_state[from_pos[0]][from_pos[1]] = None
-                                    game_rules.state = test_state
-                                    if not game_rules.is_in_check(current_player):
+                                    if not self.game_rules.is_in_check(current_player):
                                         valid_moves.append((from_pos, to_pos))
-                                    game_rules.state = current_state  # Restore state
             
             if not valid_moves:
                 break
@@ -66,8 +64,7 @@ class MCTSNode:
             depth += 1
             
             # Check for win conditions
-            game_rules.state = current_state
-            if game_rules.is_checkmate(current_player):
+            if self.game_rules.is_checkmate(current_player):
                 return current_player != self.player  # Return True if we won
                 
         # If no conclusion, evaluate position
@@ -117,7 +114,6 @@ class MCTSNode:
         if self.untried_moves is None:
             self.untried_moves = []
             # Update game rules state before checking moves
-            self.game_rules.state = self.state
             valid_moves_count = 0
 
             for row in range(10):
@@ -144,6 +140,8 @@ class MCTS:
 
         self.state = initial_state  # Add state attribute
         self.flip_state = flip_state
+        
+        self.game_rules = ChineseChess()
         
         self.root = MCTSNode(
             state=initial_state, 
@@ -199,19 +197,12 @@ class MCTS:
                 test_state[to_pos[0]][to_pos[1]] = test_state[from_pos[0]][from_pos[1]]
                 test_state[from_pos[0]][from_pos[1]] = None
 
-                # Update game rules with test state before checking
-                self.game_rules.state = test_state
-                
                 # Check if our move puts our own king in check
-                
                 if not self.game_rules.is_in_check(self.root.player):
                     result = child.simulate()
 
                     self.backpropagate(child, result)
 
-                # Restore original state in game_rules
-                self.game_rules.state = self.root.state
-                    
             else:
                 result = node.simulate()
                 self.backpropagate(node, result)
@@ -220,7 +211,6 @@ class MCTS:
 
             # Fallback to random valid move if no good moves found
             valid_moves = []
-            self.game_rules.state = self.root.state  # Update game rules state
             for row in range(10):
                 for col in range(9):
                     piece = self.root.state[row][col]
@@ -233,7 +223,6 @@ class MCTS:
                                     test_state = copy.deepcopy(self.root.state)
                                     test_state[to_row][to_col] = test_state[row][col]
                                     test_state[row][col] = None
-                                    self.game_rules.state = test_state
 
                                     if not self.game_rules.is_in_check(self.root.player):
                                         valid_moves.append(move)
@@ -261,7 +250,7 @@ class MCTS:
         return True
 
 
-class MainGame:
+class ChineseChess:
 
     def __init__(self):
            
@@ -601,7 +590,7 @@ class MainGame:
                 self.draw_board()
                 
             # If clicking on a valid move position
-            elif self.game_rules.is_valid_move(self.selected_piece, (row, col)):
+            elif self.is_valid_move(self.selected_piece, (row, col)):
                 # Make the move
                 self.board[row][col] = self.board[start_row][start_col]
                 self.board[start_row][start_col] = None
@@ -840,8 +829,7 @@ class MainGame:
         if len(collect_kings) != 2:
             return False                            
                 
-        self.game_rules.state = self.board
-        if self.game_rules.is_in_check('black') or self.game_rules.is_in_check('red'):
+        if self.is_in_check('black') or self.is_in_check('red'):
             return False
                             
         return True
@@ -1464,7 +1452,7 @@ class MainGame:
     def evaluate_checkmate_potential(self, color):
         """Evaluate how close we are to achieving checkmate"""
         opposing_color = 'red' if color == 'black' else 'black'
-        kings = self.game_rules.find_kings()
+        kings = self.find_kings()
         opponent_king_pos = kings[0] if color == 'black' else kings[1]
         score = 0
         
@@ -1498,13 +1486,13 @@ class MainGame:
                 r, c = king_row + dr, king_col + dc
                 if 0 <= r < 10 and 0 <= c < 9:
                     if (r, c) != (king_row, king_col):
-                        if self.game_rules.is_valid_move((king_row, king_col), (r, c)):
+                        if self.is_valid_move((king_row, king_col), (r, c)):
                             # Try the move
                             original_piece = self.board[r][c]
                             self.board[r][c] = self.board[king_row][king_col]
                             self.board[king_row][king_col] = None
                             
-                            if not self.game_rules.is_in_check(opposing_color):
+                            if not self.is_in_check(opposing_color):
                                 escape_moves += 1
                                 
                             # Restore the position
@@ -1515,7 +1503,7 @@ class MainGame:
         score += (9 - escape_moves) * 50
         
         # Extra bonus if opponent is in check
-        if self.game_rules.is_in_check(opposing_color):
+        if self.is_in_check(opposing_color):
             score += 200
             
         return score
@@ -1545,11 +1533,11 @@ class MainGame:
         if self.is_checkmate('red'):
             score += 10000
         # High priority for check
-        elif self.game_rules.is_in_check('red'):
+        elif self.is_in_check('red'):
             score += 1000
             # Additional bonus if the opponent has limited escape moves
             escape_moves = 0
-            kings = self.game_rules.find_kings()
+            kings = self.find_kings()
             king_pos = kings[0]  # Red king
             if king_pos:
                 king_row, king_col = king_pos
@@ -1557,7 +1545,7 @@ class MainGame:
                     for dc in [-1, 0, 1]:
                         r, c = king_row + dr, king_col + dc
                         if 0 <= r < 10 and 0 <= c < 9:
-                            if self.game_rules.is_valid_move((king_row, king_col), (r, c)):
+                            if self.is_valid_move((king_row, king_col), (r, c)):
                                 escape_moves += 1
             score += (9 - escape_moves) * 100
         
@@ -1620,7 +1608,7 @@ class MainGame:
                                 position_bonus += 50
                     
                     # Calculate piece safety
-                    safety_score = self.game_rules.evaluate_piece_safety(row, col, piece, color)
+                    safety_score = self.evaluate_piece_safety(row, col, piece, color)
                     
                     if piece[0] == eval_prefix:  # Our pieces
                         score += value + position_bonus + safety_score
@@ -1655,8 +1643,8 @@ class MainGame:
         score += checkmate_score * 2  # Give high weight to checkmate potential
         
         # King safety evaluation - adjusted for color
-        king_safety = (self.game_rules.evaluate_king_safety(color) - 
-                      self.game_rules.evaluate_king_safety('red' if color == 'black' else 'black'))
+        king_safety = (self.evaluate_king_safety(color) - 
+                      self.evaluate_king_safety('red' if color == 'black' else 'black'))
         score += king_safety
         
         return score
@@ -1992,7 +1980,7 @@ class MainGame:
         # If there are two identical pieces in the same column
         if len(identical_positions) == 2:
             # Find opponent's king position
-            red_king_pos, black_king_pos = self.game_rules.find_kings()
+            red_king_pos, black_king_pos = self.find_kings()
             opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
             
             # Calculate distances to opponent's king for both pieces
@@ -3040,5 +3028,5 @@ class MainGame:
 
 # Create and run the game
 if __name__ == "__main__":
-    game = MainGame()
+    game = ChineseChess()
     game.run()
