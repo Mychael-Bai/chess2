@@ -261,7 +261,7 @@ class MCTS:
         return True
 
 
-class ChineseChess:
+class MainGame:
 
     def __init__(self):
            
@@ -751,7 +751,6 @@ class ChineseChess:
 
 
 
-    # Add these methods to the ChineseChess class
 
     def is_valid_piece_position(self, piece, row, col):
         """
@@ -2173,7 +2172,7 @@ class ChineseChess:
         self.turn_off_sound_effect.pack(pady=5, before=self.records_button)
 
 
-    # Add this new method to the ChineseChess class
+    
     def highlight_current_move(self, move_index):
         """Highlight the current move in the records display"""
         if self.move_text:
@@ -3041,5 +3040,5 @@ class ChineseChess:
 
 # Create and run the game
 if __name__ == "__main__":
-    game = ChineseChess()
+    game = MainGame()
     game.run()
