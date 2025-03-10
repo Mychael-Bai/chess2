@@ -587,40 +587,6 @@ class MCTS:
         node.children.append(child)
         return child
 
-    def simulate(self, node):
-        state = copy.deepcopy(node.state)
-        current_player = node.player
-        
-        # Simulate random moves until game end or max depth
-        max_depth = 50
-        depth = 0
-        
-        while depth < max_depth:
-            # Get all valid moves for current player
-            valid_moves = []
-            for row in range(10):
-                for col in range(9):
-                    piece = state[row][col]
-                    if piece and piece[0] == current_player[0].upper():
-                        for to_row in range(10):
-                            for to_col in range(9):
-                                move = ((row, col), (to_row, to_col))
-                                if self.game_rules.is_valid_move((row, col), (to_row, to_col)):
-                                    valid_moves.append(move)
-            
-            if not valid_moves:
-                break
-                
-            # Make random move
-            from_pos, to_pos = random.choice(valid_moves)
-            state[to_pos[0]][to_pos[1]] = state[from_pos[0]][from_pos[1]]
-            state[from_pos[0]][from_pos[1]] = None
-            
-            current_player = 'black' if current_player == 'red' else 'red'
-            depth += 1
-        
-        # Return 1 for win, 0 for loss
-        return 1 if current_player != self.root.player else 0
 
     def backpropagate(self, node, result):
         while node:
@@ -646,7 +612,7 @@ class MCTS:
                 # Check if our move puts our own king in check
                 
                 if not self.game_rules.is_in_check(self.root.player):
-                    result = self.simulate(child)
+                    result = child.simulate()
 
                     self.backpropagate(child, result)
 
@@ -654,7 +620,7 @@ class MCTS:
                 self.game_rules.state = self.root.state
                     
             else:
-                result = self.simulate(node)
+                result = node.simulate()
                 self.backpropagate(node, result)
 
         if not self.root.children:
