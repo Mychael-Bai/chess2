@@ -412,7 +412,7 @@ class MCTSNode:
                 if piece and piece[0] == self.color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self._is_valid_move((row, col), (to_row, to_col)):
+                            if self._is_valid_move((row, col), (to_row, to_col)) and not self.validator.is_in_check(self.color):
                                 moves.append(((row, col), (to_row, to_col)))
         return moves
 
@@ -497,7 +497,6 @@ class MCTS:
         
         # Create a validator for the simulation
         validator = ChessValidator(state, node.validator.flipped)
-        
         while moves_count < max_moves:
             # Get valid moves
             moves = []
