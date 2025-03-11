@@ -3,6 +3,204 @@ from tkinter import ttk
 import os
 import pygame.mixer
 
+import math
+import random
+import copy
+import time
+
+# Add MCTS classes here, before the ChineseChess class
+class MCTSNode:
+    def __init__(self, game, state, parent=None, move=None, color='black'):
+        self.game = game        # Reference to the game instance
+        self.state = state      # Game state (board configuration)
+        self.parent = parent    # Parent node
+        self.move = move        # Move that led to this state
+        self.color = color      # Color to play in this state
+        self.children = []      # Child nodes
+        self.wins = 0          # Number of wins from this node
+        self.visits = 0        # Number of visits to this node
+        self.untried_moves = self._get_valid_moves()  # Moves not yet expanded
+
+    def _get_valid_moves(self):
+        """Get all valid moves for the current state"""
+        moves = []
+        for row in range(10):
+            for col in range(9):
+                piece = self.state[row][col]
+                if piece and piece[0] == self.color[0].upper():
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if self._is_valid_move((row, col), (to_row, to_col)):
+                                moves.append(((row, col), (to_row, to_col)))
+        return moves
+
+    def _is_valid_move(self, from_pos, to_pos):
+        """Validate moves using the game's validation logic"""
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.state[from_row][from_col]
+        
+        if not piece:
+            return False
+            
+        # Basic validation
+        if not (0 <= to_row < 10 and 0 <= to_col < 9):
+            return False
+            
+        # Can't capture own pieces
+        if self.state[to_row][to_col] and self.state[to_row][to_col][0] == piece[0]:
+            return False
+
+        # Use the game's validation methods
+        piece_type = piece[1]
+        if piece_type in ['帥', '將']:
+            return self.game.is_valid_general_move(from_pos, to_pos)
+        elif piece_type in ['仕', '士']:
+            return self.game.is_valid_advisor_move(from_pos, to_pos)
+        elif piece_type in ['相', '象']:
+            return self.game.is_valid_elephant_move(from_pos, to_pos)
+        elif piece_type == '馬':
+            return self.game.is_valid_horse_move(from_pos, to_pos)
+        elif piece_type == '車':
+            return self.game.is_valid_chariot_move(from_pos, to_pos)
+        elif piece_type == '炮':
+            return self.game.is_valid_cannon_move(from_pos, to_pos)
+        elif piece_type in ['兵', '卒']:
+            return self.game.is_valid_pawn_move(from_pos, to_pos)
+        return False
+
+    def uct_value(self, exploration_constant):
+        """Calculate the UCT value for this node"""
+        if self.visits == 0:
+            return float('inf')
+        return (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
+
+class MCTS:
+    def __init__(self, game, state, color, time_limit=1.0, exploration_constant=1.41):
+        self.game = game
+        self.root = MCTSNode(game, copy.deepcopy(state), color=color)
+        self.time_limit = time_limit
+        self.exploration_constant = exploration_constant
+
+    def select_node(self):
+        """Select a node to expand using UCT"""
+        node = self.root
+        while node.untried_moves == [] and node.children:
+            node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
+        return node
+
+    def expand_node(self, node):
+        """Expand a node by adding one of its untried moves"""
+        if not node.untried_moves:
+            return node
+            
+        move = random.choice(node.untried_moves)
+        node.untried_moves.remove(move)
+        
+        # Create new state
+        new_state = copy.deepcopy(node.state)
+        from_pos, to_pos = move
+        new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
+        new_state[from_pos[0]][from_pos[1]] = None
+        
+        # Create new node
+        new_color = 'red' if node.color == 'black' else 'black'
+        child = MCTSNode(self.game, new_state, parent=node, move=move, color=new_color)
+        node.children.append(child)
+        return child
+
+    def simulate(self, node):
+        """Simulate a random game from the node's state"""
+        state = copy.deepcopy(node.state)
+        color = node.color
+        moves_count = 0
+        max_moves = 50  # Prevent infinite games
+        
+        while moves_count < max_moves:
+            # Get valid moves
+            moves = []
+            for row in range(10):
+                for col in range(9):
+                    piece = state[row][col]
+                    if piece and piece[0] == color[0].upper():
+                        for to_row in range(10):
+                            for to_col in range(9):
+                                if self.game.is_valid_move((row, col), (to_row, to_col)):
+                                    moves.append(((row, col), (to_row, to_col)))
+            
+            if not moves:
+                # Game over - no moves available
+                return color != self.root.color  # Win if opponent has no moves
+                
+            # Make random move
+            from_pos, to_pos = random.choice(moves)
+            state[to_pos[0]][to_pos[1]] = state[from_pos[0]][from_pos[1]]
+            state[from_pos[0]][from_pos[1]] = None
+            
+            # Check for checkmate
+            if self.game.is_checkmate(color):
+                return color == self.root.color
+                
+            color = 'red' if color == 'black' else 'black'
+            moves_count += 1
+        
+        # If no decisive result, evaluate position
+        return self._evaluate_position(state, self.root.color) > 0
+
+    def backpropagate(self, node, result):
+        """Backpropagate the result through the tree"""
+        while node:
+            node.visits += 1
+            node.wins += result
+            node = node.parent
+
+    def get_best_move(self):
+        """Get the best move according to the MCTS algorithm"""
+        start_time = time.time()
+        
+        while time.time() - start_time < self.time_limit:
+            node = self.select_node()
+            node = self.expand_node(node)
+            result = self.simulate(node)
+            self.backpropagate(node, result)
+        
+        # Return the move of the most visited child
+        if not self.root.children:
+            return None
+        return max(self.root.children, key=lambda n: n.visits).move
+
+    def _evaluate_position(self, state, color):
+        """Simple position evaluation"""
+        piece_values = {
+            '將': 10000, '帥': 10000,
+            '車': 900,
+            '馬': 400,
+            '炮': 500,
+            '象': 200, '相': 200,
+            '士': 200, '仕': 200,
+            '卒': 100, '兵': 100
+        }
+        
+        score = 0
+        for row in range(10):
+            for col in range(9):
+                piece = state[row][col]
+                if piece:
+                    value = piece_values[piece[1]]
+                    if piece[0] == color[0].upper():
+                        score += value
+                    else:
+                        score -= value
+        return score
+
+# Your existing ChineseChess class starts here, but we need to modify the make_ai_move method:
+
+# Remove the minimax and related evaluation methods as they're no longer needed:
+# - minimax
+# - evaluate_position_simple
+# - evaluate_checkmate_potential
+# - _move_sorting_score
+
 class ChineseChess:
 
     def __init__(self):
@@ -1015,385 +1213,71 @@ class ChineseChess:
                 self.draw_board()        
 
     def make_ai_move(self):
-        import time
-        
-        self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
-        self.rotate_single_highlight = []
-        
-        if len(self.move_history) == 0:
-            self.board_copy = [row[:] for row in self.board]
-                            
+        """Make an AI move using MCTS"""
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
-        start_time = time.time()
-        max_time = 5.0  # Reduced from 10.0 to make moves faster
-                        
-        best_score = float('-inf')
-        best_move = None
-        best_moving_piece = None
-        
+            return
+            
         # Get AI's color based on board orientation
         ai_color = 'red' if self.flipped else 'black'
         
-        # Get all valid moves for AI's color
-        moves = self.get_all_valid_moves(ai_color)
-        if not moves:
-            # Add this check to handle stalemate or other end conditions
-            if self.is_in_check(ai_color):
-                self.game_over = True
-                self.handle_game_end()
+        # Create MCTS instance with reference to the game
+        mcts = MCTS(self, self.board, ai_color, time_limit=2.0)
+        best_move = mcts.get_best_move()
+        
+        if not best_move:
+            self.game_over = True
             return
-                
-        # Sort moves by preliminary evaluation
-        moves.sort(key=self._move_sorting_score, reverse=True)
-        
-        # Check if opponent is in check
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        is_check = self.is_in_check(opponent_color)
-        max_depth = 6 if is_check else 4  # Search deeper when opponent is in check
-        
-        # Iterative deepening
-        for search_depth in range(2, max_depth + 1):
-            if time.time() - start_time > max_time:
-                break
             
-            alpha = float('-inf')
-            beta = float('inf')
-            
-            for from_pos, to_pos in moves:
-                if time.time() - start_time > max_time:
-                    break
-                
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                
-                # Make temporary move
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check(ai_color):
-                    score = self.minimax(search_depth - 1, alpha, beta, False)
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_move = (from_pos, to_pos)
-                        best_moving_piece = moving_piece
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
+        from_pos, to_pos = best_move
+        moving_piece = self.board[from_pos[0]][from_pos[1]]
         
-        # Make the best move found
-        if best_move:
-            from_pos, to_pos = best_move
-            # Make the actual move
-            self.board[to_pos[0]][to_pos[1]] = best_moving_piece
-
-            self.board[from_pos[0]][from_pos[1]] = None
-                                                
-            # Play move sound
-            if self.sound_effect_on:
-                                            
-                if hasattr(self, 'move_sound') and self.move_sound:
-                    self.move_sound.play()
-                                
-            # Update game state
-            self.highlighted_positions = [from_pos, to_pos]
-    
-            self.add_move_to_records(from_pos, to_pos, best_moving_piece)
-
-            # Switch to opponent's turn
-            self.current_player = opponent_color
-            
-            self.move_rotate = False
-            if self.check_rotate == True:
-                self.move_rotate = True
-
-                self.rotate_to_replay()
-                from_pos = self.rotate_single_highlight[0]
-                to_pos = self.rotate_single_highlight[1]
-
-                self.history_top_numbers = []
-                self.history_bottom_numbers = []
-
-                self.history_top_numbers[:] = self.bottom_numbers[:]
-                self.history_bottom_numbers[:] = self.top_numbers[:]
-    
-                self.history_top_numbers.reverse()
-                self.history_bottom_numbers.reverse()
-                
-                self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
-
-            else:
-                self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-
-            # Add this line to record the AI move
-            self.add_move_to_history(from_pos, to_pos, best_moving_piece)
-
-            # Update display
-            self.draw_board()
-                              
-        # Check if the opponent is now in checkmate
-        if self.is_checkmate(self.current_player):
-            self.handle_game_end()
-                        
-        # Check if the opponent is now in checkmate
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        if not self.is_checkmate(opponent_color):
-            self.game_over = False  # Explicitly set game_over to False if not checkmate
-       
-    
-    def minimax(self, depth, alpha, beta, maximizing_player):
-        """Minimax algorithm with alpha-beta pruning and simplified evaluation"""
-        
-        if depth == 0:
-            return self.evaluate_position_simple('red' if self.flipped else 'black')
-        
-        if maximizing_player:
-            max_eval = float('-inf')
-            moves = self.get_all_valid_moves('black')
-            
-            for from_pos, to_pos in moves:
-                # Store and make move
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('black'):
-                    eval = self.minimax(depth - 1, alpha, beta, False)
-                    max_eval = max(max_eval, eval)
-                    alpha = max(alpha, eval)
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-                
-                if beta <= alpha:
-                    break
-            return max_eval if max_eval != float('-inf') else self.evaluate_position_simple()
-        else:
-            min_eval = float('inf')
-            moves = self.get_all_valid_moves('red')
-            
-            for from_pos, to_pos in moves:
-                moving_piece = self.board[from_pos[0]][from_pos[1]]
-                captured_piece = self.board[to_pos[0]][to_pos[1]]
-                self.board[to_pos[0]][to_pos[1]] = moving_piece
-                self.board[from_pos[0]][from_pos[1]] = None
-                
-                if not self.is_in_check('red'):
-                    eval = self.minimax(depth - 1, alpha, beta, True)
-                    min_eval = min(min_eval, eval)
-                    beta = min(beta, eval)
-                
-                # Restore position
-                self.board[from_pos[0]][from_pos[1]] = moving_piece
-                self.board[to_pos[0]][to_pos[1]] = captured_piece
-                
-                if beta <= alpha:
-                    break
-            return min_eval if min_eval != float('inf') else self.evaluate_position_simple()
-
-    def evaluate_checkmate_potential(self, color):
-        """Evaluate how close we are to achieving checkmate"""
-        opposing_color = 'red' if color == 'black' else 'black'
-        kings = self.find_kings()
-        opponent_king_pos = kings[0] if color == 'black' else kings[1]
-        score = 0
-        
-        if not opponent_king_pos:
-            return 0
-            
-        king_row, king_col = opponent_king_pos
-        
-        # Count attacking pieces near opponent's king
-        attackers = 0
-        attack_value = 0
-        for dr in range(-2, 3):
-            for dc in range(-2, 3):
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    piece = self.board[r][c]
-                    if piece and piece[0] == color[0].upper():
-                        attackers += 1
-                        # Higher value for powerful pieces near the king
-                        if piece[1] in ['車', '馬', '炮']:
-                            attack_value += 50
-                        else:
-                            attack_value += 20
-        
-        score += attackers * 30 + attack_value
-        
-        # Bonus if opponent's king has limited mobility
-        escape_moves = 0
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                r, c = king_row + dr, king_col + dc
-                if 0 <= r < 10 and 0 <= c < 9:
-                    if (r, c) != (king_row, king_col):
-                        if self.is_valid_move((king_row, king_col), (r, c)):
-                            # Try the move
-                            original_piece = self.board[r][c]
-                            self.board[r][c] = self.board[king_row][king_col]
-                            self.board[king_row][king_col] = None
-                            
-                            if not self.is_in_check(opposing_color):
-                                escape_moves += 1
-                                
-                            # Restore the position
-                            self.board[king_row][king_col] = self.board[r][c]
-                            self.board[r][c] = original_piece
-        
-        # Higher score when opponent has fewer escape moves
-        score += (9 - escape_moves) * 50
-        
-        # Extra bonus if opponent is in check
-        if self.is_in_check(opposing_color):
-            score += 200
-            
-        return score
-
-    def _move_sorting_score(self, move):
-        from_pos, to_pos = move
-        from_piece = self.board[from_pos[0]][from_pos[1]]
-        to_piece = self.board[to_pos[0]][to_pos[1]]
-        
-        score = 0
-        piece_values = {
-            '將': 10000, '帥': 10000,
-            '車': 900,
-            '馬': 400,
-            '炮': 500,
-            '象': 200, '相': 200,
-            '士': 200, '仕': 200,
-            '卒': 100, '兵': 100
-        }
-        
-        # Try the move
-        original_piece = self.board[to_pos[0]][to_pos[1]]
-        self.board[to_pos[0]][to_pos[1]] = from_piece
+        # Make the move
+        self.board[to_pos[0]][to_pos[1]] = moving_piece
         self.board[from_pos[0]][from_pos[1]] = None
         
-        # Highest priority for checkmate
-        if self.is_checkmate('red'):
-            score += 10000
-        # High priority for check
-        elif self.is_in_check('red'):
-            score += 1000
-            # Additional bonus if the opponent has limited escape moves
-            escape_moves = 0
-            kings = self.find_kings()
-            king_pos = kings[0]  # Red king
-            if king_pos:
-                king_row, king_col = king_pos
-                for dr in [-1, 0, 1]:
-                    for dc in [-1, 0, 1]:
-                        r, c = king_row + dr, king_col + dc
-                        if 0 <= r < 10 and 0 <= c < 9:
-                            if self.is_valid_move((king_row, king_col), (r, c)):
-                                escape_moves += 1
-            score += (9 - escape_moves) * 100
-        
-        # Evaluate material gain/loss
-        if to_piece:  # Capture move
-            score += piece_values[to_piece[1]] * 10
-        
-        # Position improvement
-        if from_piece[1] in ['車', '馬', '炮']:
-            if 2 <= to_pos[1] <= 6:  # Central files
-                score += 30
-            if from_piece[0] == 'B' and to_pos[0] > 4:  # Crossing river
-                score += 40
-        
-        # Restore position
-        self.board[from_pos[0]][from_pos[1]] = from_piece
-        self.board[to_pos[0]][to_pos[1]] = original_piece
-        
-        return score
-
-    def evaluate_position_simple(self, color='black'):
-        """
-        Evaluate board position for the given color.
-        color: 'red' or 'black', defaults to 'black' for backward compatibility
-        """
-        piece_values = {
-            '將': 10000, '帥': 10000,
-            '車': 900,
-            '馬': 400,
-            '炮': 500,
-            '象': 200, '相': 200,
-            '士': 200, '仕': 200,
-            '卒': 100, '兵': 100
-        }
-        
-        score = 0
-        
-        # Determine which pieces belong to the evaluating side
-        eval_prefix = 'R' if color == 'red' else 'B'
-        opp_prefix = 'B' if color == 'red' else 'R'
-        
-        # Material and position evaluation
-        for row in range(10):
-            for col in range(9):
-                piece = self.board[row][col]
-                if piece:
-                    value = piece_values[piece[1]]
-                    position_bonus = 0
+        # Play move sound
+        if self.sound_effect_on:
+            if hasattr(self, 'move_sound') and self.move_sound:
+                self.move_sound.play()
                     
-                    if piece[1] in ['車', '馬', '炮']:
-                        # Bonus for controlling center files
-                        if 2 <= col <= 6:
-                            position_bonus += 20
-                        # Bonus for penetration - adjusted based on color
-                        if color == 'red':
-                            if row < 5:  # Red pieces advancing
-                                position_bonus += 50
-                        else:  # black
-                            if row > 4:  # Black pieces advancing
-                                position_bonus += 50
-                    
-                    # Calculate piece safety
-                    safety_score = self.evaluate_piece_safety(row, col, piece, color)
-                    
-                    if piece[0] == eval_prefix:  # Our pieces
-                        score += value + position_bonus + safety_score
-                        if piece[1] in ['卒', '兵']:  # Pawns
-                            if color == 'red':
-                                if row < 5:  # Crossed river (for red)
-                                    score += 50 + (4 - row) * 20
-                                else:
-                                    score += (9 - row) * 10
-                            else:  # black
-                                if row > 4:  # Crossed river (for black)
-                                    score += 50 + (row - 4) * 20
-                                else:
-                                    score += row * 10
-                    else:  # Opponent's pieces
-                        score -= value + position_bonus + safety_score
-                        if piece[1] in ['卒', '兵']:
-                            if color == 'red':
-                                if row > 4:
-                                    score -= 50 + (row - 4) * 20
-                                else:
-                                    score -= row * 10
-                            else:  # black
-                                if row < 5:
-                                    score -= 50 + (4 - row) * 20
-                                else:
-                                    score -= (9 - row) * 10
+        # Update game state
+        self.highlighted_positions = [from_pos, to_pos]
+        self.add_move_to_records(from_pos, to_pos, moving_piece)
         
-        # Add checkmate potential evaluation - adjusted for color
-        checkmate_score = (self.evaluate_checkmate_potential(color) - 
-                          self.evaluate_checkmate_potential('red' if color == 'black' else 'black'))
-        score += checkmate_score * 2  # Give high weight to checkmate potential
+        # Switch players
+        self.current_player = 'red' if ai_color == 'black' else 'black'
         
-        # King safety evaluation - adjusted for color
-        king_safety = (self.evaluate_king_safety(color) - 
-                      self.evaluate_king_safety('red' if color == 'black' else 'black'))
-        score += king_safety
+        # Handle rotation if needed
+        if self.check_rotate:
+            self.move_rotate = True
+            self.rotate_to_replay()
+            from_pos = self.rotate_single_highlight[0]
+            to_pos = self.rotate_single_highlight[1]
+            
+            self.history_top_numbers = []
+            self.history_bottom_numbers = []
+            
+            self.history_top_numbers[:] = self.bottom_numbers[:]
+            self.history_bottom_numbers[:] = self.top_numbers[:]
+            self.history_top_numbers.reverse()
+            self.history_bottom_numbers.reverse()
+            
+            self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
+        else:
+            self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
         
-        return score
+        # Add the move to history
+        self.add_move_to_history(from_pos, to_pos, moving_piece)
+        
+        # Update display
+        self.draw_board()
+        
+        # Check for checkmate
+        if self.is_checkmate(self.current_player):
+            self.handle_game_end()
+        else:
+            self.game_over = False
 
 
     # YELLOW HIGHTLIGHT(2nd modification)
