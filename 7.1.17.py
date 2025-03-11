@@ -410,8 +410,17 @@ class MCTSNode:
                 if piece and piece[0] == self.color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
+
                             if self._is_valid_move((row, col), (to_row, to_col)):
-                                moves.append(((row, col), (to_row, to_col)))
+                                # Test if move would result in check
+                                test_state = copy.deepcopy(self.state)
+                                test_state[to_row][to_col] = test_state[row][col]
+                                test_state[row][col] = None
+                                self.validator.board = test_state
+                                if not self.validator.is_in_check(self.color):
+                                    moves.append(((row, col), (to_row, to_col)))
+                                self.validator.board = self.state
+                                
         return moves
 
     def _is_valid_move(self, from_pos, to_pos):
@@ -504,9 +513,20 @@ class MCTS:
                     if piece and piece[0] == color[0].upper():
                         for to_row in range(10):
                             for to_col in range(9):
-                                
+                                    
                                 if validator.is_valid_move((row, col), (to_row, to_col)):
-                                    moves.append(((row, col), (to_row, to_col)))
+                                    # Test the move
+                                    test_state = copy.deepcopy(state)
+                                    test_state[to_row][to_col] = test_state[row][col]
+                                    test_state[row][col] = None
+                                    
+                                    # Update validator with test state
+                                    validator.board = test_state
+                                    
+                                    # Only add move if it doesn't result in check
+                                    if not validator.is_in_check(color):
+                                        moves.append(((row, col), (to_row, to_col)))
+                                    
                                     # Restore validator's state
                                     validator.board = state
             
@@ -1599,6 +1619,10 @@ class ChineseChess:
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
             
+        if self.is_checkmate(self.current_player):
+            self.handle_game_end()
+            return
+            
         # Get AI's color based on board orientation
         ai_color = 'red' if self.flipped else 'black'
         
@@ -1612,7 +1636,7 @@ class ChineseChess:
             return
         
         # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=2.0)
+        mcts = MCTS(self.board, ai_color, time_limit=90.0)
         best_move = mcts.get_best_move()
 
         if best_move:

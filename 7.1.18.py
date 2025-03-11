@@ -410,8 +410,17 @@ class MCTSNode:
                 if piece and piece[0] == self.color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
+
                             if self._is_valid_move((row, col), (to_row, to_col)):
-                                moves.append(((row, col), (to_row, to_col)))
+                                # Test if move would result in check
+                                test_state = copy.deepcopy(self.state)
+                                test_state[to_row][to_col] = test_state[row][col]
+                                test_state[row][col] = None
+                                self.validator.board = test_state
+                                if not self.validator.is_in_check(self.color):
+                                    moves.append(((row, col), (to_row, to_col)))
+                                self.validator.board = self.state
+                                
         return moves
 
     def _is_valid_move(self, from_pos, to_pos):
@@ -487,46 +496,67 @@ class MCTS:
         return child
 
     def simulate(self, node):
-        """Simulate a random game from the node's state"""
+        """Enhanced simulation with better strategic play"""
         state = copy.deepcopy(node.state)
         color = node.color
         moves_count = 0
-        max_moves = 50  # Prevent infinite games
+        max_moves = 50
         
-        # Create a validator for the simulation
         validator = ChessValidator(state, node.validator.flipped)
         while moves_count < max_moves:
-            # Get valid moves
             moves = []
+            best_move_score = float('-inf')
+            best_moves = []
+            
+            # Get all valid moves and score them
             for row in range(10):
                 for col in range(9):
                     piece = state[row][col]
                     if piece and piece[0] == color[0].upper():
                         for to_row in range(10):
                             for to_col in range(9):
-                                
                                 if validator.is_valid_move((row, col), (to_row, to_col)):
-                                    moves.append(((row, col), (to_row, to_col)))
-                                    # Restore validator's state
+                                    test_state = copy.deepcopy(state)
+                                    test_state[to_row][to_col] = test_state[row][col]
+                                    test_state[row][col] = None
+                                    validator.board = test_state
+                                    
+                                    if not validator.is_in_check(color):
+                                        move_score = 0
+                                        # Prioritize checks and captures
+                                        if validator.is_in_check('red' if color == 'black' else 'black'):
+                                            move_score += 100
+                                        if state[to_row][to_col]:  # Capture
+                                            move_score += 50
+                                        
+                                        moves.append(((row, col), (to_row, to_col)))
+                                        if move_score > best_move_score:
+                                            best_move_score = move_score
+                                            best_moves = [((row, col), (to_row, to_col))]
+                                        elif move_score == best_move_score:
+                                            best_moves.append(((row, col), (to_row, to_col)))
+                                    
                                     validator.board = state
             
             if not moves:
-                # Game over - no moves available
-                return color != self.root.color  # Win if opponent has no moves
-                
-            # Make random move
-            from_pos, to_pos = random.choice(moves)
+                return color != self.root.color
+            
+            # Choose from best moves with higher probability
+            if best_moves and random.random() < 0.8:
+                from_pos, to_pos = random.choice(best_moves)
+            else:
+                from_pos, to_pos = random.choice(moves)
+            
             state[to_pos[0]][to_pos[1]] = state[from_pos[0]][from_pos[1]]
             state[from_pos[0]][from_pos[1]] = None
+            validator.board = state
             
-            # Check for checkmate
             if validator.is_checkmate(color):
                 return color == self.root.color
-                
+            
             color = 'red' if color == 'black' else 'black'
             moves_count += 1
         
-        # If no decisive result, evaluate position
         return self._evaluate_position(state, self.root.color) > 0
 
     def backpropagate(self, node, result):
@@ -552,7 +582,7 @@ class MCTS:
         return max(self.root.children, key=lambda n: n.visits).move
 
     def _evaluate_position(self, state, color):
-        """Simple position evaluation"""
+        """Enhanced position evaluation with strategic considerations"""
         piece_values = {
             '將': 10000, '帥': 10000,
             '車': 900,
@@ -564,15 +594,53 @@ class MCTS:
         }
         
         score = 0
+        opponent_color = 'black' if color == 'red' else 'red'
+        validator = ChessValidator(state, self.root.validator.flipped)
+        
+        # Count available moves for both sides
+        own_moves = 0
+        opponent_moves = 0
+        
         for row in range(10):
             for col in range(9):
                 piece = state[row][col]
                 if piece:
+                    # Base piece value
                     value = piece_values[piece[1]]
+                    multiplier = 1.0
+                    
+                    # Position-based bonuses
+                    if piece[1] in ['車', '馬', '炮']:
+                        # Bonus for controlling center
+                        if 2 <= col <= 6 and 3 <= row <= 6:
+                            multiplier += 0.2
+                    
+                    # Mobility bonus
+                    valid_moves = 0
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if validator.is_valid_move((row, col), (to_row, to_col)):
+                                valid_moves += 1
+                    
                     if piece[0] == color[0].upper():
-                        score += value
+                        score += value * multiplier
+                        own_moves += valid_moves
                     else:
-                        score -= value
+                        score -= value * multiplier
+                        opponent_moves += valid_moves
+        
+        # Mobility advantage
+        score += (own_moves - opponent_moves) * 10
+        
+        # Check and checkmate evaluation
+        if validator.is_in_check(opponent_color):
+            score += 500  # Bonus for putting opponent in check
+            if validator.is_checkmate(opponent_color):
+                score += 50000  # Very high bonus for checkmate
+        
+        if validator.is_in_check(color):
+            score -= 400  # Penalty for being in check
+        
         return score
 
 
@@ -713,7 +781,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.80 (latest version, moves of records responsible to mouse click)")
+        self.window.title("Chinese Chess 7.1.18 (latest version, strong, but takes too much time)")
            
         self.game_history = []  # List to store all games
 
@@ -1599,6 +1667,10 @@ class ChineseChess:
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
             
+        if self.is_checkmate(self.current_player):
+            self.handle_game_end()
+            return
+            
         # Get AI's color based on board orientation
         ai_color = 'red' if self.flipped else 'black'
         
@@ -1612,7 +1684,7 @@ class ChineseChess:
             return
         
         # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=2.0)
+        mcts = MCTS(self.board, ai_color, time_limit=90.0)
         best_move = mcts.get_best_move()
 
         if best_move:
