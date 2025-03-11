@@ -17,6 +17,41 @@ class ChessValidator:
         self.flipped = flipped
 
     # Copy all the validation methods from ChineseChess class, but remove any GUI dependencies
+    
+    def is_valid_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.board[from_row][from_col]
+        
+        # Basic validation
+        if not (0 <= to_row < 10 and 0 <= to_col < 9):
+            return False
+            
+        # Can't capture own pieces
+        if self.board[to_row][to_col] and self.board[to_row][to_col][0] == piece[0]:
+            return False
+        
+        # Get piece type (second character of the piece string)
+        piece_type = piece[1]
+        
+        # Check specific piece movement rules
+        if piece_type == '帥' or piece_type == '將':  # General/King
+            return self.is_valid_general_move(from_pos, to_pos)
+        elif piece_type == '仕' or piece_type == '士':  # Advisor
+            return self.is_valid_advisor_move(from_pos, to_pos)
+        elif piece_type == '相' or piece_type == '象':  # Elephant
+            return self.is_valid_elephant_move(from_pos, to_pos)
+        elif piece_type == '馬':  # Horse
+            return self.is_valid_horse_move(from_pos, to_pos)
+        elif piece_type == '車':  # Chariot
+            return self.is_valid_chariot_move(from_pos, to_pos)
+        elif piece_type == '炮':  # Cannon
+            return self.is_valid_cannon_move(from_pos, to_pos)
+        elif piece_type == '兵' or piece_type == '卒':  # Pawn
+            return self.is_valid_pawn_move(from_pos, to_pos)
+        
+        return False
+
     def is_valid_general_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
@@ -248,17 +283,17 @@ class ChessValidator:
 class MCTSNode:
     
     def __init__(self, state, parent=None, move=None, color='black', flipped=False):
-        self.state = state
+        self.state = state      # The state is already a copy when passed to MCTSNode
         self.parent = parent
         self.move = move
         self.color = color
         self.children = []
         self.wins = 0
         self.visits = 0
-        # Create a validator instance instead of full ChineseChess instance
-        self.validator = ChessValidator(copy.deepcopy(state), flipped)
+        # Create validator with the state directly, no need to copy again
+        self.validator = ChessValidator(self.state, flipped)
         self.untried_moves = self._get_valid_moves()
-
+    
     def _get_valid_moves(self):
         moves = []
         for row in range(10):
@@ -309,13 +344,11 @@ class MCTSNode:
         return (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
 
 class MCTS:
-    def __init__(self, game, state, color, time_limit=1.0, exploration_constant=1.41):
-        self.root = MCTSNode(game, copy.deepcopy(state), color=color)
+    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41):
+        self.root = MCTSNode(copy.deepcopy(state), color=color)
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
         
-        # Create a ChineseChess instance for move validation
-        self.chess = ChineseChess()
         self.chess.board_copy = copy.deepcopy(state)  # Set the board state
         self.untried_moves = self._get_valid_moves()  # Moves not yet expanded
 
@@ -335,14 +368,14 @@ class MCTS:
         node.untried_moves.remove(move)
         
         # Create new state
-        new_state = copy.deepcopy(node.state)
+        new_state = copy.deepcopy(node.state)  # Copy the state here
         from_pos, to_pos = move
         new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
         new_state[from_pos[0]][from_pos[1]] = None
         
-        # Create new node
+        # Create new node with the copied state
         new_color = 'red' if node.color == 'black' else 'black'
-        child = MCTSNode(self.game, new_state, parent=node, move=move, color=new_color)
+        child = MCTSNode(new_state, parent=node, move=move, color=new_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
 
@@ -353,6 +386,9 @@ class MCTS:
         moves_count = 0
         max_moves = 50  # Prevent infinite games
         
+        # Create a validator for the simulation
+        validator = ChessValidator(state, node.validator.flipped)
+        
         while moves_count < max_moves:
             # Get valid moves
             moves = []
@@ -362,7 +398,7 @@ class MCTS:
                     if piece and piece[0] == color[0].upper():
                         for to_row in range(10):
                             for to_col in range(9):
-                                if self.chess.is_valid_move((row, col), (to_row, to_col)):
+                                if validator.is_valid_move((row, col), (to_row, to_col)):
                                     moves.append(((row, col), (to_row, to_col)))
             
             if not moves:
