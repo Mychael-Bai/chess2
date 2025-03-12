@@ -383,10 +383,6 @@ class ChessValidator:
                     return (to_col == from_col and to_row == from_row - 1) or \
                         (to_row == from_row and abs(to_col - from_col) == 1)
 
-    # Copy all other validation methods from ChineseChess:
-    # is_valid_advisor_move, is_valid_elephant_move, is_valid_horse_move,
-    # is_valid_chariot_move, is_valid_cannon_move, is_valid_pawn_move
-    # [Insert all validation methods here, removing any GUI dependencies]
 
 class MCTSNode:
     
@@ -461,8 +457,8 @@ class MCTSNode:
         return (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
 
 class MCTS:
-    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41):
-        self.root = MCTSNode(copy.deepcopy(state), color=color)
+    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False):
+        self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
         
@@ -557,7 +553,13 @@ class MCTS:
             color = 'red' if color == 'black' else 'black'
             moves_count += 1
         
-        return self._evaluate_position(state, self.root.color) > 0
+        score = self._evaluate_position(state, self.root.color)
+        if score > 1000:  # Clear winning position
+            return 1.0
+        elif score < -1000:  # Clear losing position
+            return 0.0
+        else:  # Convert score to probability between 0 and 1
+            return (score + 5000) / 10000.0
 
     def backpropagate(self, node, result):
         """Backpropagate the result through the tree"""
@@ -1684,7 +1686,7 @@ class ChineseChess:
             return
         
         # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=10.0)
+        mcts = MCTS(self.board, ai_color, time_limit=2.0, flipped=self.flipped)
         best_move = mcts.get_best_move()
 
         if best_move:
@@ -1725,7 +1727,6 @@ class ChineseChess:
                 self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
             else:
                 self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-            
             # Add the move to history
             self.add_move_to_history(from_pos, to_pos, moving_piece)
             
@@ -1895,7 +1896,7 @@ class ChineseChess:
         """Switch the board orientation by rotating it 180 degrees"""
         
         self.flipped = not self.flipped
-        
+
         self.top_numbers = self.black_numbers if not self.flipped else self.red_numbers_flipped
         self.bottom_numbers = self.red_numbers if not self.flipped else self.black_numbers_flipped
         

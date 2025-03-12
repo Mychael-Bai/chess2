@@ -383,10 +383,6 @@ class ChessValidator:
                     return (to_col == from_col and to_row == from_row - 1) or \
                         (to_row == from_row and abs(to_col - from_col) == 1)
 
-    # Copy all other validation methods from ChineseChess:
-    # is_valid_advisor_move, is_valid_elephant_move, is_valid_horse_move,
-    # is_valid_chariot_move, is_valid_cannon_move, is_valid_pawn_move
-    # [Insert all validation methods here, removing any GUI dependencies]
 
 class MCTSNode:
     
@@ -557,7 +553,13 @@ class MCTS:
             color = 'red' if color == 'black' else 'black'
             moves_count += 1
         
-        return self._evaluate_position(state, self.root.color) > 0
+        score = self._evaluate_position(state, self.root.color)
+        if score > 1000:  # Clear winning position
+            return 1.0
+        elif score < -1000:  # Clear losing position
+            return 0.0
+        else:  # Convert score to probability between 0 and 1
+            return (score + 5000) / 10000.0
 
     def backpropagate(self, node, result):
         """Backpropagate the result through the tree"""
@@ -579,6 +581,7 @@ class MCTS:
         # Return the move of the most visited child
         if not self.root.children:
             return None
+        print(max(self.root.children, key=lambda n: n.visits).move)
         return max(self.root.children, key=lambda n: n.visits).move
 
     def _evaluate_position(self, state, color):
@@ -1684,7 +1687,7 @@ class ChineseChess:
             return
         
         # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=10.0)
+        mcts = MCTS(self.board, ai_color, time_limit=2.0)
         best_move = mcts.get_best_move()
 
         if best_move:
