@@ -1795,7 +1795,7 @@ class ChineseChess:
             return
         
         # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=90.0, flipped=self.flipped)
+        mcts = MCTS(self.board, ai_color, time_limit=30.0, flipped=self.flipped)
         best_move = mcts.get_best_move()
 
         if best_move:

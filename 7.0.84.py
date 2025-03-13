@@ -1026,7 +1026,7 @@ class ChineseChess:
         if self.is_checkmate('red') or self.is_checkmate('black'):
             self.game_over = True
         start_time = time.time()
-        max_time = 5.0  # Reduced from 10.0 to make moves faster
+        max_time = 30.0  # Reduced from 10.0 to make moves faster
                         
         best_score = float('-inf')
         best_move = None
