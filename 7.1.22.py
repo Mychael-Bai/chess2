@@ -461,8 +461,11 @@ class MCTS:
         self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
-        
         self.untried_moves = self.root._get_valid_moves()  # Moves not yet expanded
+        
+        self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
+        self.forced_sequence = None  # To store the checkmate sequence
+
 
     def select_node(self):
         """Select a node to expand using UCT"""
@@ -568,20 +571,87 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
+    def find_mate_in_n(self, board, color, n):
+        """Find a sequence of moves that forces checkmate in n moves or fewer."""
+        opponent_color = 'red' if color == 'black' else 'black'
+
+        if n < 1:
+            return None
+        moves = self.untried_moves
+        for move in moves:
+            new_board = copy.deepcopy(board)
+            from_pos, to_pos = move
+            new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
+            new_board[from_pos[0]][from_pos[1]] = None
+            self.validator.board = new_board
+            if self.validator.is_checkmate(opponent_color):
+                return [move]
+            if n > 1:
+                opponent_moves = self.validator._get_valid_moves(opponent_color)
+                all_lead_to_mate = True
+                for opp_move in opponent_moves:
+                    opp_board = copy.deepcopy(new_board)
+                    opp_from, opp_to = opp_move
+                    opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
+                    opp_board[opp_from[0]][opp_from[1]] = None
+                    self.validator.board = opp_board
+                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1)
+                    if mate_sequence is None:
+                        all_lead_to_mate = False
+                        break
+                if all_lead_to_mate:
+                    return [move] + mate_sequence
+        return None
+
+    def pieces_near_king(self, board, ai_color, validator):
+        """Count AI pieces within a 5x5 grid around the opponent's king."""
+        opponent_king_pos = validator.find_kings()[1 if ai_color == 'red' else 0]
+        if not opponent_king_pos:
+            return 0
+        row, col = opponent_king_pos
+        count = 0
+        for dr in [-2, -1, 0, 1, 2]:
+            for dc in [-2, -1, 0, 1, 2]:
+                r, c = row + dr, col + dc
+                if 0 <= r < 10 and 0 <= c < 9 and board[r][c] and board[r][c][0] == ai_color[0].upper():
+                    count += 1
+        return count
+
     def get_best_move(self):
-        """Get the best move according to the MCTS algorithm"""
+        """Select the best move, prioritizing checkmate sequences."""
+        # If a forced sequence exists, play the next move
+        if self.forced_sequence:
+            move = self.forced_sequence.pop(0)
+            if not self.forced_sequence:  # Sequence completed
+                self.forced_sequence = None
+            return move
+
+        # Check for mate in 1
+        mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1)
+        if mate_in_one:
+            return mate_in_one[0]
+
+        # Check for mate in 2 if several pieces are near the opponent's king
+        if self.pieces_near_king(self.root.state, self.root.color, self.validator) >= 3:
+            mate_in_two = self.find_mate_in_n(self.root.state, self.root.color, 2)
+            if mate_in_two:
+                self.forced_sequence = mate_in_two[1:]  # Store remaining moves
+                return mate_in_two[0]  # Play the first move
+
+        # Fallback to MCTS if no checkmate sequence is found
         start_time = time.time()
-        
         while time.time() - start_time < self.time_limit:
             node = self.select_node()
             node = self.expand_node(node)
             result = self.simulate(node)
             self.backpropagate(node, result)
-        
-        # Return the move of the most visited child
+
         if not self.root.children:
             return None
-        return max(self.root.children, key=lambda n: n.visits).move
+        best_child = max(self.root.children, key=lambda n: n.visits)
+        return best_child.move
+
 
     def _evaluate_position(self, state, color):
         """Enhanced position evaluation with strategic considerations"""
