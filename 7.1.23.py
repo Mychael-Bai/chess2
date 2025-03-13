@@ -397,6 +397,10 @@ class MCTSNode:
         # Create validator with the state directly, no need to copy again
         self.validator = ChessValidator(self.state, flipped)
         self.untried_moves = self._get_valid_moves()
+        
+        # Store root reference for AI color comparison
+        self.root = self if parent is None else parent.root
+
     
     def _get_valid_moves(self):
         moves = []
@@ -450,11 +454,30 @@ class MCTSNode:
             return self.validator.is_valid_pawn_move(from_pos, to_pos)
         return False
 
-    def uct_value(self, exploration_constant):
-        """Calculate the UCT value for this node"""
+
+    def uct_value(self, exploration_constant, k=0.1):
+        """Calculate UCT value with a distance-based heuristic for AI moves."""
         if self.visits == 0:
             return float('inf')
-        return (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
+        # Standard UCT formula
+        uct = (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
+        # Apply heuristic only for AI's moves
+        if self.parent.color == self.root.color and self.move:  # AI's move
+            # Temporarily set validator to parent's state
+            original_board = self.validator.board
+            self.validator.board = self.parent.state
+            # Find opponent's king position (index 1 for red, 0 for black)
+            opponent_king_idx = 1 if self.root.color == 'red' else 0
+            opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
+            self.validator.board = original_board
+            if opponent_king_pos:
+                from_pos, to_pos = self.move
+                dist_from = abs(from_pos[0] - opponent_king_pos[0]) + abs(from_pos[1] - opponent_king_pos[1])
+                dist_to = abs(to_pos[0] - opponent_king_pos[0]) + abs(to_pos[1] - opponent_king_pos[1])
+                delta_dist = dist_to - dist_from
+                uct += k * (-delta_dist)  # Bonus for moving closer, penalty for moving away
+        return uct
+
 
 class MCTS:
     def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False):
@@ -474,25 +497,41 @@ class MCTS:
             node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
         return node
 
+
     def expand_node(self, node):
-        """Expand a node by adding one of its untried moves"""
+        """Expand the node by adding a child with a promising move."""
         if not node.untried_moves:
             return node
-            
-        move = random.choice(node.untried_moves)
-        node.untried_moves.remove(move)
-        
-        # Create new state
-        new_state = copy.deepcopy(node.state)  # Copy the state here
-        from_pos, to_pos = move
+        if node.color == self.root.color:  # AI's turn
+            # Find opponent's king position in current node's state
+            original_board = self.validator.board
+            self.validator.board = node.state
+            opponent_king_idx = 1 if node.color == 'red' else 0
+            opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
+            self.validator.board = original_board
+            if opponent_king_pos:
+                # Choose move that minimizes distance to opponent's king
+                best_move = min(
+                    node.untried_moves,
+                    key=lambda m: abs(m[1][0] - opponent_king_pos[0]) + abs(m[1][1] - opponent_king_pos[1])
+                )
+            else:
+                best_move = random.choice(node.untried_moves)
+        else:
+            # For opponent's turn, select randomly
+            best_move = random.choice(node.untried_moves)
+        node.untried_moves.remove(best_move)
+        # Create new state by applying the move
+        new_state = copy.deepcopy(node.state)
+        from_pos, to_pos = best_move
         new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
         new_state[from_pos[0]][from_pos[1]] = None
-        
-        # Create new node with the copied state
-        new_color = 'red' if node.color == 'black' else 'black'
-        child = MCTSNode(new_state, parent=node, move=move, color=new_color, flipped=node.validator.flipped)
+        # Child node has opponent's color
+        child_color = 'red' if node.color == 'black' else 'black'
+        child = MCTSNode(new_state, parent=node, move=best_move, color=child_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
+
 
     def simulate(self, node):
         """Enhanced simulation with better strategic play"""
