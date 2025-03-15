@@ -715,7 +715,7 @@ class MCTS:
                 piece = board[row][col]
                 if piece and piece[0] == ai_color[0].upper():
                     distance = self.calculate_attack_distance(validator, piece, (row, col), opponent_king_pos)
-                    if distance <= 2:
+                    if distance <= 3:
                         count += 1
                         if count >= 3:  # Stop at 3 as per requirement
                             return count
@@ -3333,7 +3333,73 @@ class ChineseChess:
                 
         # If we get here, the generals are facing each other
         return True
-
+def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False, max_mate_depth=2, total_time_limit=None):
+    self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
+    self.time_limit = time_limit
+    self.total_time_limit = total_time_limit if total_time_limit is not None else time_limit * 2
+    self.exploration_constant = exploration_constant
+    self.max_mate_depth = max_mate_depth
+    # Rest of the method remains unchangeddef get_best_move(self):
+        """Select the best move, prioritizing checkmate sequences."""
+        # Start timing the entire AI move process
+        global_start_time = time.time()
+        
+        # If a forced sequence exists, play the next move
+        if self.forced_sequence:
+            move = self.forced_sequence.pop(0)
+            if not self.forced_sequence:  # Sequence completed
+                self.forced_sequence = None
+            return move
+    
+        # Check for mate in 1
+        mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1)
+        if mate_in_one:
+            return mate_in_one[0]
+    
+        # Check if we're approaching the total time limit
+        if time.time() - global_start_time > self.total_time_limit * 0.8:
+            # If we're running out of total time, choose a random valid move
+            if self.untried_moves:
+                return random.choice(self.untried_moves)
+            elif self.root.children:
+                return max(self.root.children, key=lambda n: n.visits).move
+            return None
+    
+        # Check for mate in 2 up to max_mate_depth if several pieces are near the opponent's king
+        if self.pieces_near_king(self.root.state, self.root.color, self.validator):
+            for n in range(2, self.max_mate_depth + 1):
+                # Check if we're approaching the total time limit
+                if time.time() - global_start_time > self.total_time_limit * 0.7:
+                    break
+                    
+                mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n)
+                if mate_in_n:
+                    self.forced_sequence = mate_in_n[1:]  # Store remaining moves
+                    return mate_in_n[0]  # Play the first move
+    
+        # Calculate remaining time for MCTS
+        elapsed_time = time.time() - global_start_time
+        remaining_total_time = max(0.1, self.total_time_limit - elapsed_time)
+        mcts_time = min(self.time_limit, remaining_total_time)
+        
+        # Fallback to MCTS if no checkmate sequence is found
+        mcts_start_time = time.time()
+        while time.time() - mcts_start_time < mcts_time:
+            node = self.select_node()
+            node = self.expand_node(node)
+            result = self.simulate(node)
+            self.backpropagate(node, result)
+    
+        if not self.root.children:
+            # If we have no children but have untried moves, choose a random one
+            if self.untried_moves:
+                return random.choice(self.untried_moves)
+            return None
+            
+        best_child = max(self.root.children, key=lambda n: n.visits)
+        return best_child.move# Create MCTS instance with reference to the game
+        mcts = MCTS(self.board, ai_color, time_limit=60.0, flipped=self.flipped, max_mate_depth=4, total_time_limit=120.0)
+        best_move = mcts.get_best_move()
     def is_in_check(self, color):
         """Check if the king of the given color is in check"""
         red_king_pos, black_king_pos = self.find_kings()

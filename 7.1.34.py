@@ -482,10 +482,12 @@ class MCTSNode:
 
 
 class MCTS:
-    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False):
+    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False, max_mate_depth=2):
         self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
+        self.max_mate_depth = max_mate_depth
+
         self.untried_moves = self.root._get_valid_moves(color)  # Moves not yet expanded
         
         self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
@@ -544,6 +546,7 @@ class MCTS:
             node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
         return node
 
+
     def expand_node(self, node):
         """Expand the node by adding a child with a promising move."""
         if not node.untried_moves:
@@ -577,6 +580,7 @@ class MCTS:
         child = MCTSNode(new_state, parent=node, move=best_move, color=child_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
+
 
     def simulate(self, node):
         """Enhanced simulation with better strategic play"""
@@ -655,6 +659,8 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
+
     def find_mate_in_n(self, board, color, n):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         opponent_color = 'red' if color == 'black' else 'black'
@@ -692,6 +698,7 @@ class MCTS:
                     return [move] + mate_sequence
         return None
 
+
     def pieces_near_king(self, board, ai_color, validator):
         """
         Count AI pieces that can threaten the opponent's king within 2 moves, up to 3 pieces.
@@ -708,11 +715,12 @@ class MCTS:
                 piece = board[row][col]
                 if piece and piece[0] == ai_color[0].upper():
                     distance = self.calculate_attack_distance(validator, piece, (row, col), opponent_king_pos)
-                    if distance <= 2:
+                    if distance <= 3:
                         count += 1
                         if count >= 3:  # Stop at 3 as per requirement
                             return count
         return count
+
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
@@ -728,12 +736,13 @@ class MCTS:
         if mate_in_one:
             return mate_in_one[0]
 
-        # Check for mate in 2 if several pieces are near the opponent's king
+        # Check for mate in 2 up to max_mate_depth if several pieces are near the opponent's king
         if self.pieces_near_king(self.root.state, self.root.color, self.validator):
-            mate_in_two = self.find_mate_in_n(self.root.state, self.root.color, 2)
-            if mate_in_two:
-                self.forced_sequence = mate_in_two[1:]  # Store remaining moves
-                return mate_in_two[0]  # Play the first move
+            for n in range(2, self.max_mate_depth + 1):
+                mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n)
+                if mate_in_n:
+                    self.forced_sequence = mate_in_n[1:]  # Store remaining moves
+                    return mate_in_n[0]  # Play the first move
 
         # Fallback to MCTS if no checkmate sequence is found
         start_time = time.time()
@@ -1851,7 +1860,7 @@ class ChineseChess:
             return
         
         # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=30.0, flipped=self.flipped)
+        mcts = MCTS(self.board, ai_color, time_limit=60.0, flipped=self.flipped, max_mate_depth=4)
         best_move = mcts.get_best_move()
 
         if best_move:
