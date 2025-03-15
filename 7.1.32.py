@@ -491,6 +491,52 @@ class MCTS:
         self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
         self.forced_sequence = None  # To store the checkmate sequence
 
+
+    def calculate_attack_distance(self, validator, piece, start_pos, king_pos):
+        """
+        Calculate the minimum number of moves for a piece to reach a position where it can capture the king.
+        Returns distance if <= 2, else 3.
+        """
+        # Check if the piece can attack the king from its current position
+        original_piece = validator.board[start_pos[0]][start_pos[1]]
+        validator.board[start_pos[0]][start_pos[1]] = piece
+        if validator.is_valid_move(start_pos, king_pos):
+            validator.board[start_pos[0]][start_pos[1]] = original_piece
+            return 0
+        validator.board[start_pos[0]][start_pos[1]] = original_piece
+
+        # BFS setup
+        queue = [(start_pos, 0)]  # (position, distance)
+        visited = {start_pos}
+        
+        while queue:
+            current_pos, dist = queue.pop(0)
+            if dist >= 2:  # Limit to 2 moves
+                continue
+                
+            # Explore all possible moves from current_pos
+            for to_row in range(10):
+                for to_col in range(9):
+                    to_pos = (to_row, to_col)
+                    # Temporarily place piece at current_pos to check valid moves
+                    original_at_current = validator.board[current_pos[0]][current_pos[1]]
+                    validator.board[current_pos[0]][current_pos[1]] = piece
+                    if validator.is_valid_move(current_pos, to_pos):
+                        validator.board[current_pos[0]][current_pos[1]] = original_at_current
+                        if to_pos not in visited:
+                            visited.add(to_pos)
+                            # Check if from to_pos, the piece can attack the king
+                            original_at_to = validator.board[to_pos[0]][to_pos[1]]
+                            validator.board[to_pos[0]][to_pos[1]] = piece
+                            if validator.is_valid_move(to_pos, king_pos):
+                                validator.board[to_pos[0]][to_pos[1]] = original_at_to
+                                return dist + 1
+                            validator.board[to_pos[0]][to_pos[1]] = original_at_to
+                            queue.append((to_pos, dist + 1))
+                    else:
+                        validator.board[current_pos[0]][current_pos[1]] = original_at_current
+        return 3  # Distance > 2
+
     def select_node(self):
         """Select a node to expand using UCT"""
         node = self.root
@@ -498,11 +544,11 @@ class MCTS:
             node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
         return node
 
+
     def expand_node(self, node):
         """Expand the node by adding a child with a promising move."""
         if not node.untried_moves:
             return node
-        
         if node.color == self.root.color:  # AI's turn
             # Find opponent's king position in current node's state
             original_board = self.validator.board
@@ -510,51 +556,29 @@ class MCTS:
             opponent_king_idx = 1 if node.color == 'red' else 0
             opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
             self.validator.board = original_board
-            
             if opponent_king_pos:
-                # Calculate distances for all untried moves
-                move_distances = [
-                    (move, abs(move[1][0] - opponent_king_pos[0]) + abs(move[1][1] - opponent_king_pos[1]))
-                    for move in node.untried_moves
-                ]
-                # Sort moves by distance (ascending)
-                move_distances.sort(key=lambda x: x[1])
-                
-                # Try up to top 3 moves for checkmate
-                for move, _ in move_distances[:3]:  # Limit to 3 attempts
-                    # Simulate the move on a temporary board
-                    temp_state = copy.deepcopy(node.state)
-                    from_pos, to_pos = move
-                    temp_state[to_pos[0]][to_pos[1]] = temp_state[from_pos[0]][from_pos[1]]
-                    temp_state[from_pos[0]][from_pos[1]] = None
-                    
-                    # Check for forced checkmate in 2 moves
-                    self.validator.board = temp_state
-                    mate_sequence = self.find_mate_in_n(temp_state, node.color, 2)
-                    self.validator.board = original_board
-                    
-                    if mate_sequence is not None:  # Checkmate found
-                        best_move = move
-                        break
-                else:  # No checkmate found in top 3
-                    best_move = move_distances[0][0]  # Take move with smallest distance
+                # Choose move that minimizes distance to opponent's king
+                best_move = min(
+                    node.untried_moves,
+                    key=lambda m: abs(m[1][0] - opponent_king_pos[0]) + abs(m[1][1] - opponent_king_pos[1])
+                )
             else:
-                # Fallback if king not found
                 best_move = random.choice(node.untried_moves)
         else:
-            # Opponent's turn: select randomly
+            # For opponent's turn, select randomly
             best_move = random.choice(node.untried_moves)
-        
-        # Remove selected move and create child node
         node.untried_moves.remove(best_move)
+        # Create new state by applying the move
         new_state = copy.deepcopy(node.state)
         from_pos, to_pos = best_move
         new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
         new_state[from_pos[0]][from_pos[1]] = None
+        # Child node has opponent's color
         child_color = 'red' if node.color == 'black' else 'black'
         child = MCTSNode(new_state, parent=node, move=best_move, color=child_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
+
 
     def simulate(self, node):
         """Enhanced simulation with better strategic play"""
@@ -633,13 +657,18 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
+
     def find_mate_in_n(self, board, color, n):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         opponent_color = 'red' if color == 'black' else 'black'
-
         if n < 1:
             return None
-        moves = self.untried_moves
+        
+        # Generate AI moves for the current board
+        temp_node = MCTSNode(board, color=color, flipped=self.root.validator.flipped)
+        moves = temp_node._get_valid_moves(color)
+        
         for move in moves:
             new_board = copy.deepcopy(board)
             from_pos, to_pos = move
@@ -649,7 +678,9 @@ class MCTS:
             if self.validator.is_checkmate(opponent_color):
                 return [move]
             if n > 1:
-                opponent_moves = self.root._get_valid_moves(opponent_color)
+                # Generate opponent moves for the updated board
+                opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
+                opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
                 all_lead_to_mate = True
                 for opp_move in opponent_moves:
                     opp_board = copy.deepcopy(new_board)
@@ -665,18 +696,27 @@ class MCTS:
                     return [move] + mate_sequence
         return None
 
+
     def pieces_near_king(self, board, ai_color, validator):
-        """Count AI pieces within a 5x5 grid around the opponent's king."""
+        """
+        Count AI pieces that can threaten the opponent's king within 2 moves, up to 3 pieces.
+        """
+        # Find opponent's king position
         opponent_king_pos = validator.find_kings()[1 if ai_color == 'red' else 0]
         if not opponent_king_pos:
             return 0
-        row, col = opponent_king_pos
+        
         count = 0
-        for dr in [-2, -1, 0, 1, 2]:
-            for dc in [-2, -1, 0, 1, 2]:
-                r, c = row + dr, col + dc
-                if 0 <= r < 10 and 0 <= c < 9 and board[r][c] and board[r][c][0] == ai_color[0].upper():
-                    count += 1
+        # Scan the board for AI pieces
+        for row in range(10):
+            for col in range(9):
+                piece = board[row][col]
+                if piece and piece[0] == ai_color[0].upper():
+                    distance = self.calculate_attack_distance(validator, piece, (row, col), opponent_king_pos)
+                    if distance <= 2:
+                        count += 1
+                        if count >= 4:  # Stop at 3 as per requirement
+                            return count
         return count
 
     def get_best_move(self):
@@ -694,8 +734,8 @@ class MCTS:
             return mate_in_one[0]
 
         # Check for mate in 2 if several pieces are near the opponent's king
-        if self.pieces_near_king(self.root.state, self.root.color, self.validator) >= 3:
-            mate_in_two = self.find_mate_in_n(self.root.state, self.root.color, 2)
+        if self.pieces_near_king(self.root.state, self.root.color, self.validator):
+            mate_in_two = self.find_mate_in_n(self.root.state, self.root.color, 3)
             if mate_in_two:
                 self.forced_sequence = mate_in_two[1:]  # Store remaining moves
                 return mate_in_two[0]  # Play the first move
@@ -712,6 +752,7 @@ class MCTS:
             return None
         best_child = max(self.root.children, key=lambda n: n.visits)
         return best_child.move
+
 
     def _evaluate_position(self, state, color):
         """Enhanced position evaluation with strategic considerations"""

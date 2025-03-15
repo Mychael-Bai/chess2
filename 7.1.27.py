@@ -491,6 +491,7 @@ class MCTS:
         self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
         self.forced_sequence = None  # To store the checkmate sequence
 
+
     def select_node(self):
         """Select a node to expand using UCT"""
         node = self.root
@@ -498,11 +499,11 @@ class MCTS:
             node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
         return node
 
+
     def expand_node(self, node):
         """Expand the node by adding a child with a promising move."""
         if not node.untried_moves:
             return node
-        
         if node.color == self.root.color:  # AI's turn
             # Find opponent's king position in current node's state
             original_board = self.validator.board
@@ -510,51 +511,29 @@ class MCTS:
             opponent_king_idx = 1 if node.color == 'red' else 0
             opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
             self.validator.board = original_board
-            
             if opponent_king_pos:
-                # Calculate distances for all untried moves
-                move_distances = [
-                    (move, abs(move[1][0] - opponent_king_pos[0]) + abs(move[1][1] - opponent_king_pos[1]))
-                    for move in node.untried_moves
-                ]
-                # Sort moves by distance (ascending)
-                move_distances.sort(key=lambda x: x[1])
-                
-                # Try up to top 3 moves for checkmate
-                for move, _ in move_distances[:3]:  # Limit to 3 attempts
-                    # Simulate the move on a temporary board
-                    temp_state = copy.deepcopy(node.state)
-                    from_pos, to_pos = move
-                    temp_state[to_pos[0]][to_pos[1]] = temp_state[from_pos[0]][from_pos[1]]
-                    temp_state[from_pos[0]][from_pos[1]] = None
-                    
-                    # Check for forced checkmate in 2 moves
-                    self.validator.board = temp_state
-                    mate_sequence = self.find_mate_in_n(temp_state, node.color, 2)
-                    self.validator.board = original_board
-                    
-                    if mate_sequence is not None:  # Checkmate found
-                        best_move = move
-                        break
-                else:  # No checkmate found in top 3
-                    best_move = move_distances[0][0]  # Take move with smallest distance
+                # Choose move that minimizes distance to opponent's king
+                best_move = min(
+                    node.untried_moves,
+                    key=lambda m: abs(m[1][0] - opponent_king_pos[0]) + abs(m[1][1] - opponent_king_pos[1])
+                )
             else:
-                # Fallback if king not found
                 best_move = random.choice(node.untried_moves)
         else:
-            # Opponent's turn: select randomly
+            # For opponent's turn, select randomly
             best_move = random.choice(node.untried_moves)
-        
-        # Remove selected move and create child node
         node.untried_moves.remove(best_move)
+        # Create new state by applying the move
         new_state = copy.deepcopy(node.state)
         from_pos, to_pos = best_move
         new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
         new_state[from_pos[0]][from_pos[1]] = None
+        # Child node has opponent's color
         child_color = 'red' if node.color == 'black' else 'black'
         child = MCTSNode(new_state, parent=node, move=best_move, color=child_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
+
 
     def simulate(self, node):
         """Enhanced simulation with better strategic play"""
@@ -632,6 +611,7 @@ class MCTS:
             node.visits += 1
             node.wins += result
             node = node.parent
+
 
     def find_mate_in_n(self, board, color, n):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
@@ -712,6 +692,7 @@ class MCTS:
             return None
         best_child = max(self.root.children, key=lambda n: n.visits)
         return best_child.move
+
 
     def _evaluate_position(self, state, color):
         """Enhanced position evaluation with strategic considerations"""

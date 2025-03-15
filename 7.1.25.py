@@ -3,6 +3,9 @@ from tkinter import ttk
 import os
 import pygame.mixer
 
+import threading
+
+
 import math
 import random
 import copy
@@ -789,6 +792,11 @@ class ChineseChess:
         self.board_copy = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         self.copy_switch_board = [[None for _ in range(9)] for _ in range(10)]  # Initialize empty board copy
         
+        
+        self.ai_thinking = False
+        self.ai_thread = None
+        
+        
         self.small_highlight_piece_radius = 12
         self.highlight_radius = None
         self.decrease_size = False
@@ -1081,6 +1089,53 @@ class ChineseChess:
         self.canvas.bind('<Button-1>', self.on_click)
 
 
+    def _enable_gui(self):
+        """Re-enable GUI interactions after AI move"""
+        self.canvas.config(state='normal')
+        self.canvas.bind('<Button-1>', self.on_click)
+        self.window.update()
+
+    def _execute_ai_move(self):
+        """Execute the AI move in background"""
+        try:
+            mcts = MCTS(self.board, self.current_player, time_limit=2.0, flipped=self.flipped)
+            best_move = mcts.get_best_move()
+            # Schedule the move execution on the main thread
+            self.window.after(0, self._apply_ai_move, best_move)
+        except Exception as e:
+            print(f"AI move error: {str(e)}")
+        finally:
+            self.ai_thinking = False
+            self.window.after(0, self._enable_gui)
+
+    def _update_gui_while_thinking(self):
+        """Periodically update GUI while AI is thinking"""
+        if self.ai_thinking:
+            self.window.update()
+            # Schedule next update in 50ms
+            self.window.after(50, self._update_gui_while_thinking)
+    
+    def _apply_ai_move(self, move):
+        """Apply the AI move on the main thread"""
+        if not move:
+            return
+            
+        from_pos, to_pos = move
+        # Make the move
+        self.board[to_pos[0]][to_pos[1]] = self.board[from_pos[0]][from_pos[1]]
+        self.board[from_pos[0]][from_pos[1]] = None
+        
+        # Update game state
+        self.highlighted_positions = [from_pos, to_pos]
+        self.current_player = 'black' if self.current_player == 'red' else 'red'
+        
+        # Play sound if enabled
+        if self.sound_effect_on and self.move_sound:
+            self.move_sound.play()
+        
+        # Record move and redraw
+        self.record_move(from_pos, to_pos)
+        self.draw_board()
 
     def on_record_click(self, event):
         """Handle clicks on the move records"""
@@ -1789,6 +1844,19 @@ class ChineseChess:
 
     def make_ai_move(self):
         """Make an AI move using MCTS"""
+
+
+        """Start AI move in a separate thread"""
+        if self.game_over or not self.current_player:
+            return
+            
+        self.ai_thinking = True
+        self.ai_thread = threading.Thread(target=self._execute_ai_move)
+        self.ai_thread.daemon = True
+        self.ai_thread.start()
+        # Schedule periodic GUI updates
+        self._update_gui_while_thinking()
+    
 
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
