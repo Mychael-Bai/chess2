@@ -8,7 +8,7 @@ import random
 import copy
 import time
 
-import threading
+
 
 class ChessValidator:
     """A lightweight class for chess move validation without GUI components"""
@@ -383,6 +383,7 @@ class ChessValidator:
                     return (to_col == from_col and to_row == from_row - 1) or \
                         (to_row == from_row and abs(to_col - from_col) == 1)
 
+
 class MCTSNode:
     
     def __init__(self, state, parent=None, move=None, color='black', flipped=False):
@@ -479,14 +480,13 @@ class MCTSNode:
                 uct += k * (-delta_dist)  # Bonus for moving closer, penalty for moving away
         return uct
 
+
 class MCTS:
     def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False, max_mate_depth=2):
         self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
         self.max_mate_depth = max_mate_depth
-        self.stop_requested = False  # Add stop flag
-        self.running = True  # Add running flag
 
         self.untried_moves = self.root._get_valid_moves(color)  # Moves not yet expanded
         
@@ -546,6 +546,7 @@ class MCTS:
             node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
         return node
 
+
     def expand_node(self, node):
         """Expand the node by adding a child with a promising move."""
         if not node.untried_moves:
@@ -579,6 +580,7 @@ class MCTS:
         child = MCTSNode(new_state, parent=node, move=best_move, color=child_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
+
 
     def simulate(self, node):
         """Enhanced simulation with better strategic play"""
@@ -657,6 +659,8 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
+
     def find_mate_in_n(self, board, color, n):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         opponent_color = 'red' if color == 'black' else 'black'
@@ -694,6 +698,7 @@ class MCTS:
                     return [move] + mate_sequence
         return None
 
+
     def pieces_near_king(self, board, ai_color, validator):
         """
         Count AI pieces that can threaten the opponent's king within 2 moves, up to 3 pieces.
@@ -716,16 +721,9 @@ class MCTS:
                             return count
         return count
 
+
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
-        
-        if not self.running:
-            return None
-            
-        # Check for stop request
-        if self.stop_requested:
-            return None
-            
         # If a forced sequence exists, play the next move
         if self.forced_sequence:
             move = self.forced_sequence.pop(0)
@@ -748,25 +746,16 @@ class MCTS:
 
         # Fallback to MCTS if no checkmate sequence is found
         start_time = time.time()
-        while time.time() - start_time < self.time_limit and not self.stop_requested:
-            
-            if not self.running:
-                return None
-                
+        while time.time() - start_time < self.time_limit:
             node = self.select_node()
             node = self.expand_node(node)
             result = self.simulate(node)
             self.backpropagate(node, result)
 
-        if not self.running or not self.root.children:
+        if not self.root.children:
             return None
         best_child = max(self.root.children, key=lambda n: n.visits)
         return best_child.move
-
-    def stop(self):
-        """Stop MCTS calculations"""
-        self.running = False
-
 
     def _evaluate_position(self, state, color):
         """Enhanced position evaluation with strategic considerations"""
@@ -829,6 +818,7 @@ class MCTS:
             score -= 400  # Penalty for being in check
         
         return score
+
 
 class ChineseChess:
 
@@ -939,9 +929,7 @@ class ChineseChess:
         self.saved_board_states = []  # To store board states for replay
         self.game_over = False  # Add this line
         self.flipped = False  # False means red at bottom, True means black at bottom
-
-        self.stop_requested = False
-
+                
         self.sound_effect_on = True
         
         pygame.mixer.init()
@@ -1020,17 +1008,6 @@ class ChineseChess:
         # Create right frame for the button with padding
         self.button_frame = tk.Frame(self.main_frame)
         self.button_frame.pack(side=tk.LEFT, padx=10)  # Add padding between board and button
-
-        # Create stop button at the top of button frame
-        self.stop_button = ttk.Button(
-            self.button_frame,
-            text="结束",
-            command=self.stop_game,
-            width=8,
-            style='Custom.TButton',
-            state=tk.DISABLED
-        )
-        self.stop_button.pack(pady=5, side=tk.TOP)
 
         self.records_button = ttk.Button(
             self.button_frame,
@@ -1147,76 +1124,63 @@ class ChineseChess:
         # Bind mouse event
         self.canvas.bind('<Button-1>', self.on_click)
 
-    def _execute_ai_move(self, best_move):
-        """Execute the AI move on the main thread"""
-        if not self.stop_requested:
-            from_pos, to_pos = best_move
-            moving_piece = self.board[from_pos[0]][from_pos[1]]
-            
-            # Make the move
-            self.board[to_pos[0]][to_pos[1]] = moving_piece
-            self.board[from_pos[0]][from_pos[1]] = None
-            
-            # Play move sound
-            if self.sound_effect_on:
-                if hasattr(self, 'move_sound') and self.move_sound:
-                    self.move_sound.play()
-                        
-            # Update game state
-            self.highlighted_positions = [from_pos, to_pos]
-            self.add_move_to_records(from_pos, to_pos, moving_piece)
-            
-            # Switch players
-            self.current_player = 'red' if self.current_player == 'black' else 'black'
-            
-            # Handle rotation if needed
-            if self.check_rotate:
-                self.move_rotate = True
-                self.rotate_to_replay()
-                from_pos = self.rotate_single_highlight[0]
-                to_pos = self.rotate_single_highlight[1]
-                
-                self.history_top_numbers = []
-                self.history_bottom_numbers = []
-                
-                self.history_top_numbers[:] = self.bottom_numbers[:]
-                self.history_bottom_numbers[:] = self.top_numbers[:]
-                self.history_top_numbers.reverse()
-                self.history_bottom_numbers.reverse()
-                
-                self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
-            else:
-                self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-                
-            # Add the move to history
-            self.add_move_to_history(from_pos, to_pos, moving_piece)
-            
-            # Update display
-            self.draw_board()
-            
-            # Check for checkmate
-            if self.is_checkmate(self.current_player):
-                self.handle_game_end()
-            else:
-                self.game_over = False
 
-            self.stop_button.config(state=tk.DISABLED)  # Disable stop button after move
-
-
-
-    def stop_game(self):
-        """Handle stop button click and terminate AI thread"""
-        self.stop_requested = True
-        self.game_over = True
+    def execute_ai_move(self, best_move, ai_color):
+        """Execute the AI's move on the main thread"""
+        from_pos, to_pos = best_move
+        moving_piece = self.board[from_pos[0]][from_pos[1]]
         
-        # Force terminate any running AI threads
-        for thread in threading.enumerate():
-            if thread.name == "AI_Thread" and hasattr(thread, 'mcts'):
-                thread.mcts.stop()  # Stop MCTS calculations
-                thread.join(timeout=0.1)
+        # Make the move
+        self.board[to_pos[0]][to_pos[1]] = moving_piece
+        self.board[from_pos[0]][from_pos[1]] = None
         
-        self.stop_button.config(state=tk.DISABLED)
+        # Play move sound
+        if self.sound_effect_on:
+            if hasattr(self, 'move_sound') and self.move_sound:
+                self.move_sound.play()
+                    
+        # Update game state
+        self.highlighted_positions = [from_pos, to_pos]
+        self.add_move_to_records(from_pos, to_pos, moving_piece)
+        
+        # Switch players
+        self.current_player = 'red' if ai_color == 'black' else 'black'
+        
+        # Handle rotation if needed
+        if self.check_rotate:
+            self.move_rotate = True
+            self.rotate_to_replay()
+            from_pos = self.rotate_single_highlight[0]
+            to_pos = self.rotate_single_highlight[1]
+            
+            self.history_top_numbers = []
+            self.history_bottom_numbers = []
+            
+            self.history_top_numbers[:] = self.bottom_numbers[:]
+            self.history_bottom_numbers[:] = self.top_numbers[:]
+            self.history_top_numbers.reverse()
+            self.history_bottom_numbers.reverse()
+            
+            self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
+        else:
+            self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
+        
+        # Add the move to history
+        self.add_move_to_history(from_pos, to_pos, moving_piece)
+        
+        # Update display
         self.draw_board()
+        
+        # Check for checkmate
+        if self.is_checkmate(self.current_player):
+            self.handle_game_end()
+        else:
+            self.game_over = False
+        
+        # Check if the opponent is now in checkmate
+        opponent_color = 'black' if ai_color == 'red' else 'red'
+        if not self.is_checkmate(opponent_color):
+            self.game_over = False
 
     def on_record_click(self, event):
         """Handle clicks on the move records"""
@@ -1926,66 +1890,45 @@ class ChineseChess:
     def make_ai_move(self):
         """Make an AI move using MCTS"""
 
-        """Update make_ai_move to handle stopping"""
-        self.stop_requested = False
-        self.stop_button.config(state=tk.NORMAL)  # Enable stop button during AI turn
-
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
         
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
-                 
-        if self.is_checkmate('red') or self.is_checkmate('black'):
-            self.game_over = True
-            self.stop_button.config(state=tk.DISABLED)
-
-        if self.is_checkmate(self.current_player):
-            self.handle_game_end()
-            self.stop_button.config(state=tk.DISABLED)
-            return
-            
-        # Get AI's color based on board orientation
-        ai_color = 'red' if self.flipped else 'black'
         
-        # Get all valid moves for AI's color
-        moves = self.get_all_valid_moves(ai_color)
-        if not moves:
-            # Add this check to handle stalemate or other end conditions
-            if self.is_in_check(ai_color):
-                self.game_over = True
-                self.handle_game_end()
-            return
-
-        # Create a thread for AI computation
+        # Start the AI move in a separate thread to keep UI responsive
         def ai_thread():
+            if self.is_checkmate('red') or self.is_checkmate('black'):
+                self.game_over = True
                 
+            if self.is_checkmate(self.current_player):
+                self.window.after(0, self.handle_game_end)
+                return
+                
+            # Get AI's color based on board orientation
+            ai_color = 'red' if self.flipped else 'black'
+            
+            # Get all valid moves for AI's color
+            moves = self.get_all_valid_moves(ai_color)
+            if not moves:
+                if self.is_in_check(ai_color):
+                    self.game_over = True
+                    self.window.after(0, self.handle_game_end)
+                return
+            
             # Create MCTS instance with reference to the game
             mcts = MCTS(self.board, ai_color, time_limit=60.0, flipped=self.flipped, max_mate_depth=4)
-            
-            # Store MCTS instance in thread for access from stop_game
-            threading.current_thread().mcts = mcts
-            
-            if not self.stop_requested:
-                best_move = mcts.get_best_move()
-                if not self.stop_requested and best_move:
-                    self.window.after(0, lambda: self._execute_ai_move(best_move))
-            
-        # Create and start AI thread with a name
-        ai_thread = threading.Thread(target=ai_thread, name="AI_Thread", daemon=True)
-        ai_thread.start()
+            best_move = mcts.get_best_move()
 
-        # Check for checkmate
-        if self.is_checkmate(self.current_player):
-            self.handle_game_end()
-        else:
-            self.game_over = False
-   
-        # Check if the opponent is now in checkmate
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        if not self.is_checkmate(opponent_color):
-            self.game_over = False  # Explicitly set game_over to False if not checkmate
-       
+            if best_move:
+                # Schedule the move execution on the main thread
+                self.window.after(0, lambda: self.execute_ai_move(best_move, ai_color))
+
+        # Start the AI computation in a separate thread
+        import threading
+        ai_thread = threading.Thread(target=ai_thread)
+        ai_thread.daemon = True  # Make thread daemon so it doesn't block program exit
+        ai_thread.start()
 
     # YELLOW HIGHTLIGHT(2nd modification)
     def highlight_piece(self, row, col):
