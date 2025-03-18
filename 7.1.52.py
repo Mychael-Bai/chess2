@@ -383,12 +383,6 @@ class ChessValidator:
                     return (to_col == from_col and to_row == from_row - 1) or \
                         (to_row == from_row and abs(to_col - from_col) == 1)
 
-    # Copy all other validation methods from ChineseChess:
-    # is_valid_advisor_move, is_valid_elephant_move, is_valid_horse_move,
-    # is_valid_chariot_move, is_valid_cannon_move, is_valid_pawn_move
-    # [Insert all validation methods here, removing any GUI dependencies]
-
-# Add MCTS classes here, before the ChineseChess class
 
 class MCTSNode:
     
@@ -402,20 +396,35 @@ class MCTSNode:
         self.visits = 0
         # Create validator with the state directly, no need to copy again
         self.validator = ChessValidator(self.state, flipped)
-        self.untried_moves = self._get_valid_moves()
+        self.untried_moves = self._get_valid_moves(color)
+        
+        # Store root reference for AI color comparison
+        self.root = self if parent is None else parent.root
+
     
-    def _get_valid_moves(self):
+    
+    def _get_valid_moves(self, color=None):
+        """Get all valid moves for the specified color (or current color if not specified)"""
         moves = []
+        color = color if color else self.color
+        
         for row in range(10):
             for col in range(9):
                 piece = self.state[row][col]
-                if piece and piece[0] == self.color[0].upper():
+                if piece and piece[0] == color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
                             if self._is_valid_move((row, col), (to_row, to_col)):
-                                moves.append(((row, col), (to_row, to_col)))
+                                # Test if move would result in check
+                                test_state = copy.deepcopy(self.state)
+                                test_state[to_row][to_col] = test_state[row][col]
+                                test_state[row][col] = None
+                                self.validator.board = test_state
+                                if not self.validator.is_in_check(color):
+                                    moves.append(((row, col), (to_row, to_col)))
+                                self.validator.board = self.state
         return moves
-
+    
     def _is_valid_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
@@ -447,19 +456,88 @@ class MCTSNode:
             return self.validator.is_valid_pawn_move(from_pos, to_pos)
         return False
 
-    def uct_value(self, exploration_constant):
-        """Calculate the UCT value for this node"""
+
+    def uct_value(self, exploration_constant, k=0.1):
+        """Calculate UCT value with a distance-based heuristic for AI moves."""
         if self.visits == 0:
             return float('inf')
-        return (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
+        # Standard UCT formula
+        uct = (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
+        # Apply heuristic only for AI's moves
+        if self.parent.color == self.root.color and self.move:  # AI's move
+            # Temporarily set validator to parent's state
+            original_board = self.validator.board
+            self.validator.board = self.parent.state
+            # Find opponent's king position (index 1 for red, 0 for black)
+            opponent_king_idx = 1 if self.root.color == 'red' else 0
+            opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
+            self.validator.board = original_board
+            if opponent_king_pos:
+                from_pos, to_pos = self.move
+                dist_from = abs(from_pos[0] - opponent_king_pos[0]) + abs(from_pos[1] - opponent_king_pos[1])
+                dist_to = abs(to_pos[0] - opponent_king_pos[0]) + abs(to_pos[1] - opponent_king_pos[1])
+                delta_dist = dist_to - dist_from
+                uct += k * (-delta_dist)  # Bonus for moving closer, penalty for moving away
+        return uct
+
 
 class MCTS:
-    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41):
-        self.root = MCTSNode(copy.deepcopy(state), color=color)
+    def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False, max_mate_depth=2):
+        self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
+        self.max_mate_depth = max_mate_depth
+
+        self.untried_moves = self.root._get_valid_moves(color)  # Moves not yet expanded
         
-        self.untried_moves = self.root._get_valid_moves()  # Moves not yet expanded
+        self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
+        self.forced_sequence = None  # To store the checkmate sequence
+
+
+    def calculate_attack_distance(self, validator, piece, start_pos, king_pos):
+        """
+        Calculate the minimum number of moves for a piece to reach a position where it can capture the king.
+        Returns distance if <= 2, else 3.
+        """
+        # Check if the piece can attack the king from its current position
+        original_piece = validator.board[start_pos[0]][start_pos[1]]
+        validator.board[start_pos[0]][start_pos[1]] = piece
+        if validator.is_valid_move(start_pos, king_pos):
+            validator.board[start_pos[0]][start_pos[1]] = original_piece
+            return 0
+        validator.board[start_pos[0]][start_pos[1]] = original_piece
+
+        # BFS setup
+        queue = [(start_pos, 0)]  # (position, distance)
+        visited = {start_pos}
+        
+        while queue:
+            current_pos, dist = queue.pop(0)
+            if dist >= 2:  # Limit to 2 moves
+                continue
+                
+            # Explore all possible moves from current_pos
+            for to_row in range(10):
+                for to_col in range(9):
+                    to_pos = (to_row, to_col)
+                    # Temporarily place piece at current_pos to check valid moves
+                    original_at_current = validator.board[current_pos[0]][current_pos[1]]
+                    validator.board[current_pos[0]][current_pos[1]] = piece
+                    if validator.is_valid_move(current_pos, to_pos):
+                        validator.board[current_pos[0]][current_pos[1]] = original_at_current
+                        if to_pos not in visited:
+                            visited.add(to_pos)
+                            # Check if from to_pos, the piece can attack the king
+                            original_at_to = validator.board[to_pos[0]][to_pos[1]]
+                            validator.board[to_pos[0]][to_pos[1]] = piece
+                            if validator.is_valid_move(to_pos, king_pos):
+                                validator.board[to_pos[0]][to_pos[1]] = original_at_to
+                                return dist + 1
+                            validator.board[to_pos[0]][to_pos[1]] = original_at_to
+                            queue.append((to_pos, dist + 1))
+                    else:
+                        validator.board[current_pos[0]][current_pos[1]] = original_at_current
+        return 3  # Distance > 2
 
     def select_node(self):
         """Select a node to expand using UCT"""
@@ -468,39 +546,56 @@ class MCTS:
             node = max(node.children, key=lambda n: n.uct_value(self.exploration_constant))
         return node
 
+
     def expand_node(self, node):
-        """Expand a node by adding one of its untried moves"""
+        """Expand the node by adding a child with a promising move."""
         if not node.untried_moves:
             return node
-            
-        move = random.choice(node.untried_moves)
-        node.untried_moves.remove(move)
-        
-        # Create new state
-        new_state = copy.deepcopy(node.state)  # Copy the state here
-        from_pos, to_pos = move
+        if node.color == self.root.color:  # AI's turn
+            # Find opponent's king position in current node's state
+            original_board = self.validator.board
+            self.validator.board = node.state
+            opponent_king_idx = 1 if node.color == 'red' else 0
+            opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
+            self.validator.board = original_board
+            if opponent_king_pos:
+                # Choose move that minimizes distance to opponent's king
+                best_move = min(
+                    node.untried_moves,
+                    key=lambda m: abs(m[1][0] - opponent_king_pos[0]) + abs(m[1][1] - opponent_king_pos[1])
+                )
+            else:
+                best_move = random.choice(node.untried_moves)
+        else:
+            # For opponent's turn, select randomly
+            best_move = random.choice(node.untried_moves)
+        node.untried_moves.remove(best_move)
+        # Create new state by applying the move
+        new_state = copy.deepcopy(node.state)
+        from_pos, to_pos = best_move
         new_state[to_pos[0]][to_pos[1]] = new_state[from_pos[0]][from_pos[1]]
         new_state[from_pos[0]][from_pos[1]] = None
-        
-        # Create new node with the copied state
-        new_color = 'red' if node.color == 'black' else 'black'
-        child = MCTSNode(new_state, parent=node, move=move, color=new_color, flipped=node.validator.flipped)
+        # Child node has opponent's color
+        child_color = 'red' if node.color == 'black' else 'black'
+        child = MCTSNode(new_state, parent=node, move=best_move, color=child_color, flipped=node.validator.flipped)
         node.children.append(child)
         return child
 
+
     def simulate(self, node):
-        """Simulate a random game from the node's state"""
+        """Enhanced simulation with better strategic play"""
         state = copy.deepcopy(node.state)
         color = node.color
         moves_count = 0
-        max_moves = 50  # Prevent infinite games
+        max_moves = 50
         
-        # Create a validator for the simulation
         validator = ChessValidator(state, node.validator.flipped)
-        
         while moves_count < max_moves:
-            # Get valid moves
             moves = []
+            best_move_score = float('-inf')
+            best_moves = []
+            
+            # Get all valid moves and score them
             for row in range(10):
                 for col in range(9):
                     piece = state[row][col]
@@ -508,26 +603,54 @@ class MCTS:
                         for to_row in range(10):
                             for to_col in range(9):
                                 if validator.is_valid_move((row, col), (to_row, to_col)):
-                                    moves.append(((row, col), (to_row, to_col)))
+                                    test_state = copy.deepcopy(state)
+                                    test_state[to_row][to_col] = test_state[row][col]
+                                    test_state[row][col] = None
+                                    validator.board = test_state
+                                    
+                                    if not validator.is_in_check(color):
+                                        move_score = 0
+                                        # Prioritize checks and captures
+                                        if validator.is_in_check('red' if color == 'black' else 'black'):
+                                            move_score += 100
+                                        if state[to_row][to_col]:  # Capture
+                                            move_score += 50
+                                        
+                                        moves.append(((row, col), (to_row, to_col)))
+                                        if move_score > best_move_score:
+                                            best_move_score = move_score
+                                            best_moves = [((row, col), (to_row, to_col))]
+                                        elif move_score == best_move_score:
+                                            best_moves.append(((row, col), (to_row, to_col)))
+                                    
+                                    validator.board = state
             
             if not moves:
-                # Game over - no moves available
-                return color != self.root.color  # Win if opponent has no moves
-                
-            # Make random move
-            from_pos, to_pos = random.choice(moves)
+                return color != self.root.color
+            
+            # Choose from best moves with higher probability
+            if best_moves and random.random() < 0.8:
+                from_pos, to_pos = random.choice(best_moves)
+            else:
+                from_pos, to_pos = random.choice(moves)
+            
             state[to_pos[0]][to_pos[1]] = state[from_pos[0]][from_pos[1]]
             state[from_pos[0]][from_pos[1]] = None
+            validator.board = state
             
-            # Check for checkmate
             if validator.is_checkmate(color):
                 return color == self.root.color
-                
+            
             color = 'red' if color == 'black' else 'black'
             moves_count += 1
         
-        # If no decisive result, evaluate position
-        return self._evaluate_position(state, self.root.color) > 0
+        score = self._evaluate_position(state, self.root.color)
+        if score > 1000:  # Clear winning position
+            return 1.0
+        elif score < -1000:  # Clear losing position
+            return 0.0
+        else:  # Convert score to probability between 0 and 1
+            return (score + 5000) / 10000.0
 
     def backpropagate(self, node, result):
         """Backpropagate the result through the tree"""
@@ -536,23 +659,106 @@ class MCTS:
             node.wins += result
             node = node.parent
 
-    def get_best_move(self):
-        """Get the best move according to the MCTS algorithm"""
-        start_time = time.time()
+
+
+    def find_mate_in_n(self, board, color, n):
+        """Find a sequence of moves that forces checkmate in n moves or fewer."""
+        opponent_color = 'red' if color == 'black' else 'black'
+        if n < 1:
+            return None
         
+        # Generate AI moves for the current board
+        temp_node = MCTSNode(board, color=color, flipped=self.root.validator.flipped)
+        moves = temp_node._get_valid_moves(color)
+        
+        for move in moves:
+            new_board = copy.deepcopy(board)
+            from_pos, to_pos = move
+            new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
+            new_board[from_pos[0]][from_pos[1]] = None
+            self.validator.board = new_board
+            if self.validator.is_checkmate(opponent_color):
+                return [move]
+            if n > 1:
+                # Generate opponent moves for the updated board
+                opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
+                opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
+                all_lead_to_mate = True
+                for opp_move in opponent_moves:
+                    opp_board = copy.deepcopy(new_board)
+                    opp_from, opp_to = opp_move
+                    opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
+                    opp_board[opp_from[0]][opp_from[1]] = None
+                    self.validator.board = opp_board
+                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1)
+                    if mate_sequence is None:
+                        all_lead_to_mate = False
+                        break
+                if all_lead_to_mate:
+                    return [move] + mate_sequence
+        return None
+
+
+    def pieces_near_king(self, board, ai_color, validator):
+        """
+        Count AI pieces that can threaten the opponent's king within 2 moves, up to 3 pieces.
+        """
+        # Find opponent's king position
+        opponent_king_pos = validator.find_kings()[1 if ai_color == 'red' else 0]
+        if not opponent_king_pos:
+            return 0
+        
+        count = 0
+        # Scan the board for AI pieces
+        for row in range(10):
+            for col in range(9):
+                piece = board[row][col]
+                if piece and piece[0] == ai_color[0].upper():
+                    distance = self.calculate_attack_distance(validator, piece, (row, col), opponent_king_pos)
+                    if distance <= 3:
+                        count += 1
+                        if count >= 3:  # Stop at 3 as per requirement
+                            return count
+        return count
+
+
+    def get_best_move(self):
+        """Select the best move, prioritizing checkmate sequences."""
+        # If a forced sequence exists, play the next move
+        if self.forced_sequence:
+            move = self.forced_sequence.pop(0)
+            if not self.forced_sequence:  # Sequence completed
+                self.forced_sequence = None
+            return move
+
+        # Check for mate in 1
+        mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1)
+        if mate_in_one:
+            return mate_in_one[0]
+
+        # Check for mate in 2 up to max_mate_depth if several pieces are near the opponent's king
+        if self.pieces_near_king(self.root.state, self.root.color, self.validator):
+            for n in range(2, self.max_mate_depth + 1):
+                mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n)
+                if mate_in_n:
+                    self.forced_sequence = mate_in_n[1:]  # Store remaining moves
+                    return mate_in_n[0]  # Play the first move
+
+        # Fallback to MCTS if no checkmate sequence is found
+        start_time = time.time()
         while time.time() - start_time < self.time_limit:
             node = self.select_node()
             node = self.expand_node(node)
             result = self.simulate(node)
             self.backpropagate(node, result)
-        
-        # Return the move of the most visited child
+
         if not self.root.children:
             return None
-        return max(self.root.children, key=lambda n: n.visits).move
+        best_child = max(self.root.children, key=lambda n: n.visits)
+        return best_child.move
 
     def _evaluate_position(self, state, color):
-        """Simple position evaluation"""
+        """Enhanced position evaluation with strategic considerations"""
         piece_values = {
             '將': 10000, '帥': 10000,
             '車': 900,
@@ -564,24 +770,55 @@ class MCTS:
         }
         
         score = 0
+        opponent_color = 'black' if color == 'red' else 'red'
+        validator = ChessValidator(state, self.root.validator.flipped)
+        
+        # Count available moves for both sides
+        own_moves = 0
+        opponent_moves = 0
+        
         for row in range(10):
             for col in range(9):
                 piece = state[row][col]
                 if piece:
+                    # Base piece value
                     value = piece_values[piece[1]]
+                    multiplier = 1.0
+                    
+                    # Position-based bonuses
+                    if piece[1] in ['車', '馬', '炮']:
+                        # Bonus for controlling center
+                        if 2 <= col <= 6 and 3 <= row <= 6:
+                            multiplier += 0.2
+                    
+                    # Mobility bonus
+                    valid_moves = 0
+                    for to_row in range(10):
+                        for to_col in range(9):
+                            if validator.is_valid_move((row, col), (to_row, to_col)):
+                                valid_moves += 1
+                    
                     if piece[0] == color[0].upper():
-                        score += value
+                        score += value * multiplier
+                        own_moves += valid_moves
                     else:
-                        score -= value
+                        score -= value * multiplier
+                        opponent_moves += valid_moves
+        
+        # Mobility advantage
+        score += (own_moves - opponent_moves) * 10
+        
+        # Check and checkmate evaluation
+        if validator.is_in_check(opponent_color):
+            score += 500  # Bonus for putting opponent in check
+            if validator.is_checkmate(opponent_color):
+                score += 50000  # Very high bonus for checkmate
+        
+        if validator.is_in_check(color):
+            score -= 400  # Penalty for being in check
+        
         return score
 
-# Your existing ChineseChess class starts here, but we need to modify the make_ai_move method:
-
-# Remove the minimax and related evaluation methods as they're no longer needed:
-# - minimax
-# - evaluate_position_simple
-# - evaluate_checkmate_potential
-# - _move_sorting_score
 
 class ChineseChess:
 
@@ -720,7 +957,7 @@ class ChineseChess:
         style = ttk.Style()
         style.configure('Custom.TButton', font=('SimSun', 12))
         
-        self.window.title("Chinese Chess 7.0.80 (latest version, moves of records responsible to mouse click)")
+        self.window.title("Chinese Chess 7.1.18 (latest version, strong, but takes too much time)")
            
         self.game_history = []  # List to store all games
 
@@ -888,6 +1125,64 @@ class ChineseChess:
         self.canvas.bind('<Button-1>', self.on_click)
 
 
+    def execute_ai_move(self, best_move, ai_color):
+        """Execute the AI's move on the main thread"""
+        from_pos, to_pos = best_move
+        moving_piece = self.board[from_pos[0]][from_pos[1]]
+        
+        # Make the move
+        self.board[to_pos[0]][to_pos[1]] = moving_piece
+        self.board[from_pos[0]][from_pos[1]] = None
+        
+        # Play move sound
+        if self.sound_effect_on:
+            if hasattr(self, 'move_sound') and self.move_sound:
+                self.move_sound.play()
+                    
+        # Update game state
+        self.highlighted_positions = [from_pos, to_pos]
+        self.add_move_to_records(from_pos, to_pos, moving_piece)
+        
+        # Switch players
+        self.current_player = 'red' if ai_color == 'black' else 'black'
+        
+        self.switch_color_button.config(state=tk.NORMAL)
+        
+        # Handle rotation if needed
+        if self.check_rotate:
+            self.move_rotate = True
+            self.rotate_to_replay()
+            from_pos = self.rotate_single_highlight[0]
+            to_pos = self.rotate_single_highlight[1]
+            
+            self.history_top_numbers = []
+            self.history_bottom_numbers = []
+            
+            self.history_top_numbers[:] = self.bottom_numbers[:]
+            self.history_bottom_numbers[:] = self.top_numbers[:]
+            self.history_top_numbers.reverse()
+            self.history_bottom_numbers.reverse()
+            
+            self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
+        else:
+            self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
+        
+        # Add the move to history
+        self.add_move_to_history(from_pos, to_pos, moving_piece)
+        
+        # Update display
+        self.draw_board()
+        
+        # Check for checkmate
+        if self.is_checkmate(self.current_player):
+            self.handle_game_end()
+        else:
+            self.game_over = False
+        
+        # Check if the opponent is now in checkmate
+        opponent_color = 'black' if ai_color == 'red' else 'red'
+        if not self.is_checkmate(opponent_color):
+            self.game_over = False
 
     def on_record_click(self, event):
         """Handle clicks on the move records"""
@@ -1491,6 +1786,9 @@ class ChineseChess:
             return  # Exit the function early to prevent normal game logic
 
 
+        if (self.flipped == False and self.current_player == 'black') or (self.flipped == True and self.current_player == 'red'):
+            return
+
         if self.replay_mode or self.game_over:  # Add game_over check
             return  # Ignore clicks when game is over or in replay mode
         
@@ -1594,90 +1892,53 @@ class ChineseChess:
                 self.highlighted_positions = [(row, col)]  # Initialize highlights with selected piece
                 self.draw_board()        
 
+
     def make_ai_move(self):
         """Make an AI move using MCTS"""
+        
+        self.switch_color_button.config(state=tk.DISABLED)
 
+        
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
         self.rotate_single_highlight = []
         
         if len(self.move_history) == 0:
             self.board_copy = [row[:] for row in self.board]
                  
-        if self.is_checkmate('red') or self.is_checkmate('black'):
-            self.game_over = True
-            
-        # Get AI's color based on board orientation
-        ai_color = 'red' if self.flipped else 'black'
-        
-        # Get all valid moves for AI's color
-        moves = self.get_all_valid_moves(ai_color)
-        if not moves:
-            # Add this check to handle stalemate or other end conditions
-            if self.is_in_check(ai_color):
+        # Start the AI move in a separate thread to keep UI responsive
+        def ai_thread():
+            if self.is_checkmate('red') or self.is_checkmate('black'):
                 self.game_over = True
-                self.handle_game_end()
-            return
-        
-        # Create MCTS instance with reference to the game
-        mcts = MCTS(self.board, ai_color, time_limit=10.0)
-        best_move = mcts.get_best_move()
+                
+            if self.is_checkmate(self.current_player):
+                self.window.after(0, self.handle_game_end)
+                return
+                
+            # Get AI's color based on board orientation
+            ai_color = 'red' if self.flipped else 'black'
+            
+            # Get all valid moves for AI's color
+            moves = self.get_all_valid_moves(ai_color)
+            if not moves:
+                if self.is_in_check(ai_color):
+                    self.game_over = True
+                    self.window.after(0, self.handle_game_end)
+                return
+            
+            # Create MCTS instance with reference to the game
+            mcts = MCTS(self.board, ai_color, time_limit=60.0, flipped=self.flipped, max_mate_depth=4)
+            best_move = mcts.get_best_move()
 
-        if best_move:
-            from_pos, to_pos = best_move
-            moving_piece = self.board[from_pos[0]][from_pos[1]]
-            
-            # Make the move
-            self.board[to_pos[0]][to_pos[1]] = moving_piece
-            self.board[from_pos[0]][from_pos[1]] = None
-            
-            # Play move sound
-            if self.sound_effect_on:
-                if hasattr(self, 'move_sound') and self.move_sound:
-                    self.move_sound.play()
-                        
-            # Update game state
-            self.highlighted_positions = [from_pos, to_pos]
-            self.add_move_to_records(from_pos, to_pos, moving_piece)
-            
-            # Switch players
-            self.current_player = 'red' if ai_color == 'black' else 'black'
-            
-            # Handle rotation if needed
-            if self.check_rotate:
-                self.move_rotate = True
-                self.rotate_to_replay()
-                from_pos = self.rotate_single_highlight[0]
-                to_pos = self.rotate_single_highlight[1]
-                
-                self.history_top_numbers = []
-                self.history_bottom_numbers = []
-                
-                self.history_top_numbers[:] = self.bottom_numbers[:]
-                self.history_bottom_numbers[:] = self.top_numbers[:]
-                self.history_top_numbers.reverse()
-                self.history_bottom_numbers.reverse()
-                
-                self.move_history_numbers.append([self.history_top_numbers, self.history_bottom_numbers])
-            else:
-                self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-            
-            # Add the move to history
-            self.add_move_to_history(from_pos, to_pos, moving_piece)
-            
-            # Update display
-            self.draw_board()
-            
-        # Check for checkmate
-        if self.is_checkmate(self.current_player):
-            self.handle_game_end()
-        else:
-            self.game_over = False
-   
-        # Check if the opponent is now in checkmate
-        opponent_color = 'black' if ai_color == 'red' else 'red'
-        if not self.is_checkmate(opponent_color):
-            self.game_over = False  # Explicitly set game_over to False if not checkmate
-       
+            if best_move:
+                # Schedule the move execution on the main thread
+                self.window.after(0, lambda: self.execute_ai_move(best_move, ai_color))
+
+        # Start the AI computation in a separate thread
+        import threading
+        ai_thread = threading.Thread(target=ai_thread)
+        ai_thread.daemon = True  # Make thread daemon so it doesn't block program exit
+        ai_thread.start()
+  
 
     # YELLOW HIGHTLIGHT(2nd modification)
     def highlight_piece(self, row, col):
@@ -1830,7 +2091,7 @@ class ChineseChess:
         """Switch the board orientation by rotating it 180 degrees"""
         
         self.flipped = not self.flipped
-        
+
         self.top_numbers = self.black_numbers if not self.flipped else self.red_numbers_flipped
         self.bottom_numbers = self.red_numbers if not self.flipped else self.black_numbers_flipped
         
