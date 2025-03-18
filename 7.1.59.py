@@ -658,41 +658,68 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
     def find_mate_in_n(self, board, color, n):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         opponent_color = 'red' if color == 'black' else 'black'
         if n < 1:
             return None
         
-        # Generate AI moves for the current board
+        # First check if any move leads to immediate checkmate
         temp_node = MCTSNode(board, color=color, flipped=self.root.validator.flipped)
         moves = temp_node._get_valid_moves(color)
         
+        # Prioritize checking moves first
+        checking_moves = []
         for move in moves:
             new_board = copy.deepcopy(board)
             from_pos, to_pos = move
-            new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
+            piece = new_board[from_pos[0]][from_pos[1]]
+            new_board[to_pos[0]][to_pos[1]] = piece
             new_board[from_pos[0]][from_pos[1]] = None
             self.validator.board = new_board
-            if self.validator.is_checkmate(opponent_color):
-                return [move]
-            if n > 1:
-                # Generate opponent moves for the updated board
+            
+            # If move gives check, prioritize it
+            if self.validator.is_in_check(opponent_color):
+                checking_moves.append(move)
+                # If it's checkmate, return immediately
+                if self.validator.is_checkmate(opponent_color):
+                    return [move]
+        
+        # If n=1 and no immediate checkmate found, return None
+        if n == 1:
+            return None
+        
+        # For deeper searches, prioritize checking moves
+        priority_moves = checking_moves + [m for m in moves if m not in checking_moves]
+        
+        # Only explore deeper if we have checking moves
+        if n > 1 and checking_moves:
+            for move in priority_moves:
+                new_board = copy.deepcopy(board)
+                from_pos, to_pos = move
+                new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
+                new_board[from_pos[0]][from_pos[1]] = None
+                
+                # Only consider opponent's moves that get out of check
                 opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
                 opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
+                
                 all_lead_to_mate = True
                 for opp_move in opponent_moves:
                     opp_board = copy.deepcopy(new_board)
                     opp_from, opp_to = opp_move
                     opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
                     opp_board[opp_from[0]][opp_from[1]] = None
-                    self.validator.board = opp_board
+                    
                     mate_sequence = self.find_mate_in_n(opp_board, color, n - 1)
                     if mate_sequence is None:
                         all_lead_to_mate = False
                         break
-                if all_lead_to_mate:
+                        
+                if all_lead_to_mate and opponent_moves:
                     return [move] + mate_sequence
+        
         return None
 
     def pieces_near_king(self, board, ai_color, validator):
