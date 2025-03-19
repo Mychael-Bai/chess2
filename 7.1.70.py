@@ -753,6 +753,10 @@ class MCTS:
 
         if not self.validator.is_in_check(self.root.color):
                 
+            # Set a time limit for the checkmate search (e.g., 1 second)
+            checkmate_search_time_limit = 30.0  # seconds
+            start_time = time.time()
+                
             # Check for mate in 1
             mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1)
             if mate_in_one:
@@ -766,6 +770,10 @@ class MCTS:
                     if mate_in_n:
                         self.forced_sequence = mate_in_n[1:]  # Store remaining moves
                         return mate_in_n[0]  # Play the first move
+
+                    # Check if time limit is exceeded
+                    if time.time() - start_time > checkmate_search_time_limit:
+                        break
 
         else:
             # Get all potential moves

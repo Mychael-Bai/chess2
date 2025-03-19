@@ -656,68 +656,90 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+    def find_mate_in_n(self, board, color, n, deadline):
+        """
+        Find a forced checkmate sequence in n moves for the given color.
+        Returns a list of moves if found, None if not found or time limit exceeded.
+        """
+        # Check time at the very start
+        if time.time() > deadline:
+            return None
 
-    def find_mate_in_n(self, board, color, n):
-        """Find a sequence of moves that forces checkmate in n moves or fewer."""
-        opponent_color = 'red' if color == 'black' else 'black'
+        # Base case: if n < 1, no checkmate possible
         if n < 1:
             return None
-        
-        # First check if any move leads to immediate checkmate
+
+        opponent_color = 'red' if color == 'black' else 'black'
         temp_node = MCTSNode(board, color=color, flipped=self.root.validator.flipped)
         moves = temp_node._get_valid_moves(color)
-        
-        # Prioritize checking moves first
+
+        # Early exit for n == 1: look for immediate checkmate
+        if n == 1:
+            for move in moves:
+                if time.time() > deadline:
+                    return None  # Check time before each move evaluation
+                new_board = copy.deepcopy(board)
+                from_pos, to_pos = move
+                piece = new_board[from_pos[0]][from_pos[1]]
+                new_board[to_pos[0]][to_pos[1]] = piece
+                new_board[from_pos[0]][from_pos[1]] = None
+                self.validator.board = new_board
+
+                if self.validator.is_checkmate(opponent_color):
+                    return [move]
+            return None
+
+        # For n > 1, prioritize checking moves and explore deeper
         checking_moves = []
         for move in moves:
+            if time.time() > deadline:
+                return None  # Frequent time checks
             new_board = copy.deepcopy(board)
             from_pos, to_pos = move
             piece = new_board[from_pos[0]][from_pos[1]]
             new_board[to_pos[0]][to_pos[1]] = piece
             new_board[from_pos[0]][from_pos[1]] = None
             self.validator.board = new_board
-            
-            # If move gives check, prioritize it
+
             if self.validator.is_in_check(opponent_color):
                 checking_moves.append(move)
-                # If it's checkmate, return immediately
                 if self.validator.is_checkmate(opponent_color):
                     return [move]
-        
-        # If n=1 and no immediate checkmate found, return None
-        if n == 1:
-            return None
-        
-        # For deeper searches, prioritize checking moves
+
+        # Combine checking moves with others, prioritizing checks
         priority_moves = checking_moves + [m for m in moves if m not in checking_moves]
-        
-        # Only explore deeper if we have checking moves
-        if n > 1 and checking_moves:
-            for move in priority_moves:
-                new_board = copy.deepcopy(board)
-                from_pos, to_pos = move
-                new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
-                new_board[from_pos[0]][from_pos[1]] = None
-                
-                # Only consider opponent's moves that get out of check
-                opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
-                opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
-                
-                all_lead_to_mate = True
-                for opp_move in opponent_moves:
-                    opp_board = copy.deepcopy(new_board)
-                    opp_from, opp_to = opp_move
-                    opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
-                    opp_board[opp_from[0]][opp_from[1]] = None
-                    
-                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1)
-                    if mate_sequence is None:
-                        all_lead_to_mate = False
-                        break
-                        
-                if all_lead_to_mate and opponent_moves:
-                    return [move] + mate_sequence
-        
+
+        # Explore each move
+        for move in priority_moves:
+            if time.time() > deadline:
+                return None  # Check time before proceeding
+            new_board = copy.deepcopy(board)
+            from_pos, to_pos = move
+            new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
+            new_board[from_pos[0]][from_pos[1]] = None
+
+            opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
+            opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
+
+            # Assume all opponent moves lead to mate until proven otherwise
+            all_lead_to_mate = True
+            for opp_move in opponent_moves:
+                if time.time() > deadline:
+                    return None  # Check time within opponent move loop
+                opp_board = copy.deepcopy(new_board)
+                opp_from, opp_to = opp_move
+                opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
+                opp_board[opp_from[0]][opp_from[1]] = None
+
+                # Recursive call with decremented depth
+                mate_sequence = self.find_mate_in_n(opp_board, color, n - 1, deadline)
+                if mate_sequence is None:
+                    return None  # Time exceeded or no mate found, abort this branch
+                # If we get here, this opponent move leads to mate, continue checking others
+
+            if all_lead_to_mate and opponent_moves:
+                return [move] + mate_sequence
+
         return None
 
     def pieces_near_king(self, board, ai_color, validator):
@@ -753,16 +775,23 @@ class MCTS:
 
         if not self.validator.is_in_check(self.root.color):
                 
+            # Set a time limit for the checkmate search (e.g., 1 second)
+            checkmate_search_time_limit = 30.0  # seconds
+            deadline = time.time() + checkmate_search_time_limit
+                
             # Check for mate in 1
-            mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1)
+            mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1, deadline)
             if mate_in_one:
                 return mate_in_one[0]
 
             # Check for mate in 2 up to max_mate_depth if several pieces are near the opponent's king
             if self.pieces_near_king(self.root.state, self.root.color, self.validator):
-                       
                 for n in range(2, self.max_mate_depth + 1):
-                    mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n)
+                        
+                    if time.time() > deadline:
+                        break  # Stop if time is already up
+                    
+                    mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n, deadline)
                     if mate_in_n:
                         self.forced_sequence = mate_in_n[1:]  # Store remaining moves
                         return mate_in_n[0]  # Play the first move
