@@ -1037,7 +1037,7 @@ class ChineseChess:
 
         # Create right frame for the button with padding
         self.button_frame = tk.Frame(self.main_frame)
-        self.button_frame.pack(side=tk.LEFT, padx=10, pady=(0, 60))  # Add padding between board and button
+        self.button_frame.pack(side=tk.LEFT, padx=10, pady=(0, 100))  # Add padding between board and button
 
 
         # Create timer label with fixed width font
