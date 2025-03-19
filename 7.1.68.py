@@ -20,7 +20,6 @@ class ChessValidator:
 
     # Copy all the validation methods from ChineseChess class, but remove any GUI dependencies
     
-    
     def find_kings(self):
         """Find positions of both kings/generals"""
         red_king_pos = black_king_pos = None
@@ -128,6 +127,7 @@ class ChessValidator:
         self.game_over = True  # Add this line
 
         return True
+
 
     def is_valid_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
@@ -384,7 +384,6 @@ class ChessValidator:
                     return (to_col == from_col and to_row == from_row - 1) or \
                         (to_row == from_row and abs(to_col - from_col) == 1)
 
-
 class MCTSNode:
     
     def __init__(self, state, parent=None, move=None, color='black', flipped=False):
@@ -480,7 +479,6 @@ class MCTSNode:
                 delta_dist = dist_to - dist_from
                 uct += k * (-delta_dist)  # Bonus for moving closer, penalty for moving away
         return uct
-
 
 class MCTS:
     def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False, max_mate_depth=2):
@@ -762,12 +760,13 @@ class MCTS:
 
             # Check for mate in 2 up to max_mate_depth if several pieces are near the opponent's king
             if self.pieces_near_king(self.root.state, self.root.color, self.validator):
+                       
                 for n in range(2, self.max_mate_depth + 1):
                     mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n)
                     if mate_in_n:
                         self.forced_sequence = mate_in_n[1:]  # Store remaining moves
                         return mate_in_n[0]  # Play the first move
- 
+
         else:
             # Get all potential moves
             moves = []
@@ -802,8 +801,10 @@ class MCTS:
             return None
 
         # Fallback to MCTS if no checkmate sequence is found
+
         start_time = time.time()
         while time.time() - start_time < self.time_limit:
+
             node = self.select_node()
             node = self.expand_node(node)
             result = self.simulate(node)
@@ -1468,7 +1469,7 @@ class ChineseChess:
                 if is_red:
                     if (0 <= row <= 2 and 0 <= col <= 8) or (row, col) in [(3, 1), (4, 1), (3, 3), (4, 3), (3, 5), (4, 5), (3, 7), (4, 7)]:
                         return False
-                if is_red:
+                if not is_red:
                     if (7 <= row <= 9 and 0 <= col <= 8) or (row, col) in [(5, 1), (6, 1), (5, 3), (6, 3), (5, 5), (6, 5), (5, 7), (6, 7)]:
                         return False
         
@@ -2042,7 +2043,7 @@ class ChineseChess:
                 return
             
             # Create MCTS instance with reference to the game
-            mcts = MCTS(self.board, ai_color, time_limit=60.0, flipped=self.flipped, max_mate_depth=10)
+            mcts = MCTS(self.board, ai_color, time_limit=30.0, flipped=self.flipped, max_mate_depth=10)
             best_move = mcts.get_best_move()
 
             if best_move:
