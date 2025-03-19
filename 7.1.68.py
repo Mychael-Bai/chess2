@@ -767,6 +767,39 @@ class MCTS:
                     if mate_in_n:
                         self.forced_sequence = mate_in_n[1:]  # Store remaining moves
                         return mate_in_n[0]  # Play the first move
+ 
+        else:
+            # Get all potential moves
+            moves = []
+            for row in range(10):
+                for col in range(9):
+                    piece = self.root.state[row][col]
+                    if piece and piece[0] == self.root.color[0].upper():
+                        for to_row in range(10):
+                            for to_col in range(9):
+                                if self.validator.is_valid_move((row, col), (to_row, to_col)):
+                                    # Try the move
+                                    original_piece = self.root.state[to_row][to_col]
+                                    self.root.state[to_row][to_col] = piece
+                                    self.root.state[row][col] = None
+                                    
+                                    # Check if move escapes check
+                                    if not self.validator.is_in_check(self.root.color):
+                                        # Score the move using _evaluate_position
+                                        position_score = self._evaluate_position(self.root.state, self.root.color)
+                                        moves.append(((row, col), (to_row, to_col), position_score))
+                                    
+                                    # Undo the move
+                                    self.root.state[row][col] = piece
+                                    self.root.state[to_row][to_col] = original_piece
+
+            # If there are legal moves to escape check
+            if moves:
+                # Sort moves by score, prioritizing moves that lead to better positions
+                moves.sort(key=lambda x: x[2], reverse=True)
+                # Return the highest scored move
+                return (moves[0][0], moves[0][1])
+            return None
 
         # Fallback to MCTS if no checkmate sequence is found
         start_time = time.time()
