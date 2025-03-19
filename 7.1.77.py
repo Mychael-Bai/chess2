@@ -797,6 +797,13 @@ class MCTS:
                             
             except TimeoutError:
                 pass  # Proceed to MCTS search with remaining time
+
+
+            # Print time spent in checkmate search before moving to check escape
+            checkmate_time_spent = time.time() - overall_start_time
+            print(f"Time spent in checkmate search: {checkmate_time_spent:.2f} seconds")
+
+            
         else:
             # When in check, find best escape move with time limit
             check_escape_start = time.time()
