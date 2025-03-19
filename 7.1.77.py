@@ -656,10 +656,10 @@ class MCTS:
             node.wins += result
             node = node.parent
 
-    def find_mate_in_n(self, board, color, n, start_time):
+    def find_mate_in_n(self, board, color, n, start_time, time_limit):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         # start_time is now a required parameter
-        if time.time() - start_time > 20.0:  # Now start_time will always be a float
+        if time.time() - start_time > time_limit:  # Now start_time will always be a float
             raise TimeoutError("Checkmate search timeout")
         
         opponent_color = 'red' if color == 'black' else 'black'
@@ -673,7 +673,7 @@ class MCTS:
         # Prioritize checking moves first
         checking_moves = []
         for move in moves:
-            if time.time() - start_time > 20.0:
+            if time.time() - start_time > time_limit:
                 raise TimeoutError("Checkmate search timeout")
                 
             new_board = copy.deepcopy(board)
@@ -700,7 +700,7 @@ class MCTS:
         # Only explore deeper if we have checking moves
         if n > 1 and checking_moves:
             for move in priority_moves:
-                if time.time() - start_time > 20.0:
+                if time.time() - start_time > time_limit:
                     raise TimeoutError("Checkmate search timeout")
                     
                 new_board = copy.deepcopy(board)
@@ -713,7 +713,7 @@ class MCTS:
                 
                 all_lead_to_mate = True
                 for opp_move in opponent_moves:
-                    if time.time() - start_time > 20.0:
+                    if time.time() - start_time > time_limit:
                         raise TimeoutError("Checkmate search timeout")
                         
                     opp_board = copy.deepcopy(new_board)
@@ -722,7 +722,7 @@ class MCTS:
                     opp_board[opp_from[0]][opp_from[1]] = None
                     
                     # Pass the same start_time to recursive calls
-                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1, start_time)
+                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1, start_time, time_limit)
                     if mate_sequence is None:
                         all_lead_to_mate = False
                         break
@@ -776,7 +776,7 @@ class MCTS:
             
             try:
                 # Check for mate in 1 - explicitly pass start time
-                mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1, checkmate_search_start)
+                mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1, checkmate_search_start, CHECKMATE_TIME_LIMIT)
                 if mate_in_one:
                     return mate_in_one[0]
 
@@ -790,7 +790,7 @@ class MCTS:
                             raise TimeoutError("Time limit exceeded")
                             
                         mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n, 
-                                                       checkmate_search_start)
+                                                       checkmate_search_start, CHECKMATE_TIME_LIMIT)
                         if mate_in_n:
                             self.forced_sequence = mate_in_n[1:]
                             return mate_in_n[0]
