@@ -759,55 +759,17 @@ class MCTS:
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
-        TOTAL_TIME_LIMIT = 90  # Total time limit of 30 seconds
-        CHECKMATE_TIME_LIMIT = 30  # Maximum time for checkmate search
+        TOTAL_TIME_LIMIT = 2  # Total time limit of 30 seconds
         CHECK_ESCAPE_TIME_LIMIT = 20  # Maximum time for finding best escape from check
+        CHECKMATE_TIME_LIMIT = 30  # Maximum time for checkmate search
         
         overall_start_time = time.time()
         
-        # If a forced sequence exists, play the next move
-        if self.forced_sequence:
-            move = self.forced_sequence.pop(0)
-            if not self.forced_sequence:
-                self.forced_sequence = None
-            return move
+        # When in check, find best escape move with time limit
+        if self.validator.is_in_check(self.root.color):
 
-        if not self.validator.is_in_check(self.root.color):
-            checkmate_search_start = time.time()
-            
-            try:
-                # Check for mate in 1 - explicitly pass start time
-                mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1, checkmate_search_start, CHECKMATE_TIME_LIMIT)
-                if mate_in_one:
-                    return mate_in_one[0]
-
-                # Check for mate in n if pieces are near opponent's king
-                if self.pieces_near_king(self.root.state, self.root.color, self.validator):
-                    for n in range(2, self.max_mate_depth + 1):
-                        # Check both local and overall time limits
-                        current_time = time.time()
-                        if (current_time - checkmate_search_start > CHECKMATE_TIME_LIMIT or 
-                            current_time - overall_start_time > TOTAL_TIME_LIMIT):
-                            raise TimeoutError("Time limit exceeded")
-                            
-                        mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n, 
-                                                       checkmate_search_start, CHECKMATE_TIME_LIMIT)
-                        if mate_in_n:
-                            self.forced_sequence = mate_in_n[1:]
-                            return mate_in_n[0]
-                            
-            except TimeoutError:
-                pass  # Proceed to MCTS search with remaining time
-
-
-            # Print time spent in checkmate search before moving to check escape
-            checkmate_time_spent = time.time() - overall_start_time
-            print(f"Time spent in checkmate search: {checkmate_time_spent:.2f} seconds")
-
-            
-        else:
-            # When in check, find best escape move with time limit
             check_escape_start = time.time()
+
             moves = []
             try:
                 for row in range(10):
@@ -849,6 +811,34 @@ class MCTS:
                     return (moves[0][0], moves[0][1])
                 # If no moves found within time limit, proceed to MCTS search
         
+        else:
+
+            checkmate_search_start = time.time()
+            
+            try:
+                # Check for mate in 1 - explicitly pass start time
+                mate_in_one = self.find_mate_in_n(self.root.state, self.root.color, 1, checkmate_search_start, CHECKMATE_TIME_LIMIT)
+                if mate_in_one:
+                    return mate_in_one[0]
+
+                # Check for mate in n if pieces are near opponent's king
+                if self.pieces_near_king(self.root.state, self.root.color, self.validator):
+                    for n in range(2, self.max_mate_depth + 1):
+                        # Check both local and overall time limits
+                        current_time = time.time()
+                        if (current_time - checkmate_search_start > CHECKMATE_TIME_LIMIT or 
+                            current_time - overall_start_time > TOTAL_TIME_LIMIT):
+                            raise TimeoutError("Time limit exceeded")
+                            
+                        mate_in_n = self.find_mate_in_n(self.root.state, self.root.color, n, 
+                                                       checkmate_search_start, CHECKMATE_TIME_LIMIT)
+                        if mate_in_n:
+                            self.forced_sequence = mate_in_n[1:]
+                            return mate_in_n[0]
+                            
+            except TimeoutError:
+                pass  # Proceed to MCTS search with remaining time
+            
         # Calculate remaining time for MCTS search, accounting for both checkmate and check escape time
         time_used = time.time() - overall_start_time
         remaining_time = TOTAL_TIME_LIMIT - time_used
@@ -1266,7 +1256,6 @@ class ChineseChess:
         """Execute the AI's move on the main thread"""
         from_pos, to_pos = best_move
         moving_piece = self.board[from_pos[0]][from_pos[1]]
-        
         # Make the move
         self.board[to_pos[0]][to_pos[1]] = moving_piece
         self.board[from_pos[0]][from_pos[1]] = None
