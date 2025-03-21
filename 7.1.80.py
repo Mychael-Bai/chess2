@@ -760,7 +760,7 @@ class MCTS:
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
-        TOTAL_TIME_LIMIT = 60  # Total time limit of 30 seconds
+        TOTAL_TIME_LIMIT = 2  # Total time limit of 30 seconds
         CHECK_ESCAPE_TIME_LIMIT = 20  # Maximum time for finding best escape from check
         CHECKMATE_TIME_LIMIT = 30  # Maximum time for checkmate search
         
@@ -2667,7 +2667,14 @@ class ChineseChess:
             self.move_text.config(state='normal')
             self.move_text.delete('1.0', tk.END)
             for i, move in enumerate(self.move_history_records, 1):
-                self.move_text.insert(tk.END, f"{i}. {move}\n")
+                if (i + 1) % 2 == 0:
+                    sequence_number = int((i + 1) / 2)
+                    self.move_text.insert(tk.END, f"{sequence_number}. {move}\n")
+                else:
+                    take_up_space = ''
+                    for i in range(len(str(sequence_number))):
+                        take_up_space += ' '
+                    self.move_text.insert(tk.END, f"{take_up_space}  {move}\n")
             self.move_text.config(state='disabled')
             self.move_text.see(tk.END)  # Scroll to the bottom
 
