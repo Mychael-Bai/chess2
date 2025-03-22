@@ -1298,35 +1298,84 @@ class ChineseChess:
         if display_list:
             self.history_menu.set("历史对局")
 
-    def convert_pgn_to_chinese_notation(self, pgn_move, current_board):
+
+    def convert_pgn_to_chinese_notation(self, pgn_move, current_board, color):
         """Convert a PGN format move (e.g., '車A1-A2') to Chinese notation format"""
         try:
-            # Get the piece type
-            piece_char = pgn_move[0]
+            # Parse the PGN move
+            if len(pgn_move) < 4:
+                return pgn_move
+                
+            piece_type = pgn_move[0]  # Get piece type character
             coords = pgn_move[1:].split('-')
             if len(coords) != 2:
-                return pgn_move  # Return original if can't parse
+                return pgn_move
                 
             from_coord, to_coord = coords
+            
+            # Convert coordinates
+            columns_red = ['一', '二', '三', '四', '五', '六', '七', '八', '九']
+            columns_black = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+            
+            # Convert file letter to column number (A-I -> 0-8)
             from_col = ord(from_coord[0]) - ord('A')
             to_col = ord(to_coord[0]) - ord('A')
             from_row = 9 - int(from_coord[1])
             to_row = 9 - int(to_coord[1])
             
-            # Get the piece from the current board
-            piece = current_board[from_row][from_col]
-            if not piece:
-                return pgn_move
-                
-            # Create board positions
-            from_pos = (from_row, from_col)
-            to_pos = (to_row, to_col)
+            # Get position descriptor (前/后) if needed
+            position_descriptor = ""
+            pieces_in_same_col = []
+            for row in range(10):
+                piece = current_board[row][from_col]
+                if piece and piece[0] == color[0].upper() and piece[1] == piece_type:
+                    pieces_in_same_col.append(row)
+            if len(pieces_in_same_col) > 1:
+                # Determine 前/后 based on position
+                if color == 'red':
+                    position_descriptor = "前" if from_row < max(pieces_in_same_col) else "后"
+                else:
+                    position_descriptor = "前" if from_row > min(pieces_in_same_col) else "后"
             
-            # Use the existing get_move_text method to generate Chinese notation
-            return self.get_move_text(from_pos, to_pos, piece)
+            # Determine direction
+            if color == 'red':
+                if not self.flipped:
+                    direction = '进' if to_row < from_row else '退' if to_row > from_row else '平'
+                    columns = columns_red
+                else:
+                    direction = '进' if to_row > from_row else '退' if to_row < from_row else '平'
+                    columns = columns_red[::-1]  # Reverse for flipped board
+            else:
+                if not self.flipped:
+                    direction = '进' if to_row > from_row else '退' if to_row < from_row else '平'
+                    columns = columns_black
+                else:
+                    direction = '进' if to_row < from_row else '退' if to_row > from_row else '平'
+                    columns = columns_black[::-1]  # Reverse for flipped board
             
-        except (IndexError, ValueError):
-            return pgn_move  # Return original if conversion fails
+            # Calculate move distance/position
+            if direction == '平':
+                distance = columns[to_col]
+            else:
+                steps = abs(to_row - from_row)
+                distance = columns[steps-1] if color == 'red' else str(steps)
+            
+            # Special handling for different piece types
+            if piece_type in ['仕', '士', '相', '象', '馬']:
+                if piece_type == '馬':
+                    return f"{position_descriptor}{piece_type}{direction}{columns[to_col]}"
+                else:
+                    return f"{piece_type}{columns[from_col]}{direction}{columns[to_col]}"
+            else:
+                if position_descriptor:
+                    return f"{position_descriptor}{piece_type}{direction}{distance}"
+                else:
+                    return f"{piece_type}{columns[from_col]}{direction}{distance}"
+                    
+        except (IndexError, ValueError) as e:
+            print(f"Error converting notation: {e}")
+            return pgn_move
+
 
     def load_selected_game(self, event=None):
         """Load and display the selected game history"""
@@ -1388,7 +1437,7 @@ class ChineseChess:
                             current_board[to_pos[0]][to_pos[1]] = piece
                             current_board[from_pos[0]][from_pos[1]] = None
                             # Convert PGN to Chinese notation
-                            chinese_notation = self.convert_pgn_to_chinese_notation(red_move, current_board)
+                            chinese_notation = self.convert_pgn_to_chinese_notation(red_move, current_board, 'red')
                             self.move_history.append({
                                 'from_pos': from_pos,
                                 'to_pos': to_pos,
@@ -1411,7 +1460,7 @@ class ChineseChess:
                                 current_board[to_pos[0]][to_pos[1]] = piece
                                 current_board[from_pos[0]][from_pos[1]] = None
                                 # Convert PGN to Chinese notation
-                                chinese_notation = self.convert_pgn_to_chinese_notation(black_move, current_board)
+                                chinese_notation = self.convert_pgn_to_chinese_notation(black_move, current_board, 'black')
                                 self.move_history.append({
                                     'from_pos': from_pos,
                                     'to_pos': to_pos,
@@ -1428,14 +1477,20 @@ class ChineseChess:
             self.move_text.config(state='normal')
             self.move_text.delete('1.0', tk.END)
             
-            # Display moves in pairs with Chinese notation
+            # Display moves in pairs
             move_count = len(self.move_history_records)
             for i in range(0, move_count, 2):
                 move_number = (i // 2) + 1
                 red_move = self.move_history_records[i]
                 if i + 1 < move_count:
                     black_move = self.move_history_records[i + 1]
-                    self.move_text.insert(tk.END, f"{move_number}. {red_move} {black_move}\n")
+                    self.move_text.insert(tk.END, f"{move_number}. {red_move}\n")
+                    
+                    take_up_space = ''
+                    for i in range(len(str(move_number))):
+                        take_up_space += ' '
+                        
+                    self.move_text.insert(tk.END, f"{take_up_space}  {black_move}\n")
                 else:
                     self.move_text.insert(tk.END, f"{move_number}. {red_move}\n")
             
@@ -1557,6 +1612,8 @@ class ChineseChess:
                     f.write(f"{move_num}. {pair[0]} {pair[1]}\n")
                 else:
                     f.write(f"{move_num}. {pair[0]} ")
+            
+            f.write("END")
 
     def start_timer(self):
         """Start the timer"""
