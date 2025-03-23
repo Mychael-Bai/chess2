@@ -1614,6 +1614,7 @@ class ChineseChess:
                     f.write(f"{move_num}. {pair[0]} ")
             
             f.write("END")
+            f.write('\n')
 
     def start_timer(self):
         """Start the timer"""
