@@ -1298,6 +1298,7 @@ class ChineseChess:
         if display_list:
             self.history_menu.set("历史对局")
 
+
     def load_selected_game(self, event=None):
         """Load and display the selected game history"""
         selected = self.history_var.get()
@@ -1357,7 +1358,7 @@ class ChineseChess:
                             # Store the piece before moving it
                             piece = current_board[from_pos[0]][from_pos[1]]
                             # Get Chinese notation using get_move_text with current board state
-                            chinese_notation = self._get_move_text(current_board, from_pos, to_pos, piece)
+                            chinese_notation = self.get_move_text(from_pos, to_pos, piece)
                             # Make the move on the current board
                             current_board[to_pos[0]][to_pos[1]] = piece
                             current_board[from_pos[0]][from_pos[1]] = None
@@ -1383,7 +1384,7 @@ class ChineseChess:
                                 # Store the piece before moving it
                                 piece = current_board[from_pos[0]][from_pos[1]]
                                 # Get Chinese notation using get_move_text with current board state
-                                chinese_notation = self._get_move_text(current_board, from_pos, to_pos, piece)
+                                chinese_notation = self.get_move_text(from_pos, to_pos, piece)
                                 # Make the move on the current board
                                 current_board[to_pos[0]][to_pos[1]] = piece
                                 current_board[from_pos[0]][from_pos[1]] = None
@@ -2868,54 +2869,6 @@ class ChineseChess:
         # Return empty string if there's only one piece of this type in the column
         return ""
 
-    def _get_piece_position_descriptor(self, board_stae, from_pos, to_pos, piece):
-        """
-        Determine 前/后 based on proximity to opponent's king.
-        If the piece is closer to the opponent's king, it's labeled '前',
-        otherwise it's labeled '后'.
-        """
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-
-        piece_color = piece[0]  # 'R' for red or 'B' for black
-        piece_type = piece[1]   # The type of piece (炮, 車, etc.)
-        
-        self.board = [row[:] for row in board_stae]
-        
-        # Find all identical pieces in the same column
-        identical_positions = []
-        for row in range(10):
-            current_piece = self.board[row][from_col]
-            if current_piece:
-
-                if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
-                    identical_positions.append(row)
-                else:
-
-
-                    if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
-                        identical_positions.append(row)
-        identical_positions.append(from_row)
-                
-        # If there are two identical pieces in the same column
-        if len(identical_positions) == 2:
-            # Find opponent's king position
-            red_king_pos, black_king_pos = self.find_kings()
-            opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
-            
-            # Calculate distances to opponent's king for both pieces
-            distances = [(abs(row - opponent_king_row), row) for row in identical_positions]
-            
-            # The piece closer to opponent's king is '前', the other is '后'
-            distances.sort()  # Sort by distance to opponent's king
-            if from_row == distances[0][1]:  # If this is the closer piece
-                return "前"
-            else:
-                return "后"
-        
-        # Return empty string if there's only one piece of this type in the column
-        return ""
-
     def get_move_text(self, from_pos, to_pos, piece):
         """
         Convert a move into Chinese chess notation, accounting for board orientation.
@@ -2950,105 +2903,6 @@ class ChineseChess:
         
         # Get position descriptor (前/后)
         position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece)
-        
-        # Determine direction based on visual perspective
-        if piece_color == 'R':
-            # Playing from bottom perspective
-            if not self.flipped:
-
-                if to_row < from_row:
-                    direction = '进'
-                elif to_row > from_row:
-                    direction = '退'
-                else:
-                    direction = '平'
-
-            else:
-            
-                # Playing from top perspective
-                if to_row > from_row:
-                    direction = '进'
-                elif to_row < from_row:
-                    direction = '退'
-                else:
-                    direction = '平'
-            
-        else:
-            if not self.flipped:
-
-                # Playing from top perspective
-                if to_row > from_row:
-                    direction = '进'
-                elif to_row < from_row:
-                    direction = '退'
-                else:
-                    direction = '平'
-            else:
-                
-                if to_row < from_row:
-                    direction = '进'
-                elif to_row > from_row:
-                    direction = '退'
-                else:
-                    direction = '平'
-                    
-        # Calculate steps based on visual perspective
-        steps = abs(to_row - from_row)
-
-        if piece_color == 'R':
-
-            steps_text = columns[steps-1] if steps > 0 else to_col_text
-        else:
-            steps_text = str(steps) if steps > 0 else to_col_text
-
-        # Construct move text
-        if position_descriptor and piece_name not in ['仕', '士', '相', '象']:
-            if piece_name == '馬':
-                move_text = f"{position_descriptor}{piece_name}{direction}{to_col_text}"
-            else:
-                move_text = f"{position_descriptor}{piece_name}{direction}{steps_text}"
-        else:
-            if piece_name in ['兵', '卒', '帥', '將', '車', '炮']:
-                move_text = f"{piece_name}{from_col_text}{direction}{steps_text}"
-            else:
-                move_text = f"{piece_name}{from_col_text}{direction}{to_col_text}"
-        
-        return move_text
-
-    def _get_move_text(self, board_stae, from_pos, to_pos, piece):
-        """
-        Convert a move into Chinese chess notation, accounting for board orientation.
-        Adjusts move notation based on the visual perspective of each side.
-        """
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece_name = piece[1]
-        piece_color = piece[0]
-        
-        # Get column numbers based on piece color and board orientation
-        if piece_color == 'R':
-            columns = ['一', '二', '三', '四', '五', '六', '七', '八', '九']
-            if not self.flipped:
-                # Playing from bottom, count from right to left
-                from_col_text = columns[8 - from_col]
-                to_col_text = columns[8 - to_col]
-            else:
-                # Playing from top, count from left to right
-                from_col_text = columns[from_col]
-                to_col_text = columns[to_col]
-        else:  # Black pieces
-            columns = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-            if not self.flipped:
-                # Playing from bottom, count from left to right
-                from_col_text = columns[from_col]
-                to_col_text = columns[to_col]
-            else:
-                # Playing from top, count from right to left
-                from_col_text = columns[8 - from_col]
-                to_col_text = columns[8 - to_col]
-        
-        # Get position descriptor (前/后)
-        position_descriptor = self._get_piece_position_descriptor(board_stae, from_pos, to_pos, piece)
         
         # Determine direction based on visual perspective
         if piece_color == 'R':
