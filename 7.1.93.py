@@ -2809,12 +2809,12 @@ class ChineseChess:
         # Wait for window to close
         self.window.wait_window(warn_window)
 
-
-    def get_piece_position_descriptor(self, from_pos, to_pos, piece):
+    def get_piece_position_descriptor(self, from_pos, to_pos, piece, board=None):
         """
         Determine 前/后 based on proximity to opponent's king.
         If the piece is closer to the opponent's king, it's labeled '前',
         otherwise it's labeled '后'.
+        board parameter allows passing in a specific board state.
         """
         from_row, from_col = from_pos
         to_row, to_col = to_pos
@@ -2822,37 +2822,47 @@ class ChineseChess:
         piece_color = piece[0]  # 'R' for red or 'B' for black
         piece_type = piece[1]   # The type of piece (炮, 車, etc.)
         
+        # Use provided board state or default to self.board
+        current_board = board if board is not None else self.board
+        
         # Find all identical pieces in the same column
         identical_positions = []
         for row in range(10):
-            current_piece = self.board[row][from_col]
+            current_piece = current_board[row][from_col]
             if current_piece:
-
                 if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
                     identical_positions.append(row)
                 else:
-
-
                     if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
                         identical_positions.append(row)
         identical_positions.append(from_row)
                 
         # If there are two identical pieces in the same column
         if len(identical_positions) == 2:
-            # Find opponent's king position
-            red_king_pos, black_king_pos = self.find_kings()
-            opponent_king_row = black_king_pos[0] if piece_color == 'R' else red_king_pos[0]
             
-            # Calculate distances to opponent's king for both pieces
-            distances = [(abs(row - opponent_king_row), row) for row in identical_positions]
-            
-            # The piece closer to opponent's king is '前', the other is '后'
-            distances.sort()  # Sort by distance to opponent's king
-            if from_row == distances[0][1]:  # If this is the closer piece
-                return "前"
+            if self.flipped == False:
+                if piece_color == 'R':
+                    if from_row == min(identical_positions):
+                        return "前"
+                    else:
+                        return "后"
+                else:
+                    if from_row == min(identical_positions):
+                        return "后"
+                    else:
+                        return "前"
             else:
-                return "后"
-        
+                if piece_color == 'R':
+                    if from_row == min(identical_positions):
+                        return "后"
+                    else:
+                        return "前"
+                else:
+                    if from_row == min(identical_positions):
+                        return "前"
+                    else:
+                        return "后"
+                     
         # Return empty string if there's only one piece of this type in the column
         return ""
 
