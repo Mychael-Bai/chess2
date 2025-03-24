@@ -1,0 +1,34 @@
+[Game "Chinese Chess"]
+[Title "上海 马惠城 胜 上海 葛慧莹"]
+[Event "2025年上海市嘉定区第二届“丰华杯”迎新象棋公开赛"]
+[Red "马惠城"]
+[RedTeam "上海"]
+[Black "葛慧莹"]
+[BlackName "上海"]
+[Opening "中炮两头蛇对左三步虎"]
+[Date ""]
+[Site "嘉定工业区文体中心"]
+[Round "第05轮"]
+[Format "ICCS"]
+1. H2-E2 H9-G7
+2. H0-G2 I9-H9
+3. C3-C4 H7-I7
+4. B0-C2 B9-C7
+5. G3-G4 H9-H5
+6. I0-H0 H5-H0
+7. G2-H0 A9-A8
+8. B2-A2 A8-H8
+9. H0-G2 H8-H5
+10. A0-B0 B7-A7
+11. E3-E4 F9-E8
+12. C2-E3 G6-G5
+13. E4-E5 G5-G4
+14. E3-G4 E6-E5
+15. B0-B6 E5-E4
+16. G4-F6 H5-F5
+17. B6-C6 A7-A8
+18. G2-H4 A8-C8
+19. H4-F5 C8-C6
+20. F6-G8 E9-F9
+21. F5-G7 C6-C0
+22. D0-E1  *
