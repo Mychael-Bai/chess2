@@ -1268,20 +1268,32 @@ class ChineseChess:
         import os
         from datetime import datetime
 
-        # Get list of PGN files from game_records directory
+        # Get list of TXT files from game_records directory
         records_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chinese_chess_records")
         if not os.path.exists(records_dir):
             os.makedirs(records_dir)
         
         pgn_files = []
         for file in os.listdir(records_dir):
-            if file.endswith(".pgn"):
-                # Get file creation time
-                file_path = os.path.join(records_dir, file)
-                creation_time = os.path.getctime(file_path)
-                pgn_files.append((datetime.fromtimestamp(creation_time), file))
+            if file.endswith(".txt"):  # Changed from .pgn to .txt
+                try:
+                    # Get file modification time instead of creation time
+                    file_path = os.path.join(records_dir, file)
+                    mod_time = os.path.getmtime(file_path)
+                    # Try to extract date from filename if it follows standard format
+                    try:
+                        # First try standard format (YYYYMMDD_HHMMSS)
+                        date_str = file.split('game_')[1].split('.')[0]
+                        file_time = datetime.strptime(date_str, '%Y%m%d_%H%M%S')
+                    except:
+                        # If that fails, use file modification time
+                        file_time = datetime.fromtimestamp(mod_time)
+                    pgn_files.append((file_time, file))
+                except:
+                    # If any error occurs, just use current time
+                    pgn_files.append((datetime.now(), file))
         
-        # Sort files by creation time, newest first
+        # Sort files by time, newest first
         pgn_files.sort(reverse=True)
         
         # Format display strings for the dropdown
@@ -1289,7 +1301,12 @@ class ChineseChess:
         self.pgn_file_map = {}  # Map display strings to filenames
         
         for creation_time, filename in pgn_files:
-            display_text = f"{creation_time.strftime('%m-%d %H:%M')} 对局"
+            # For external files without timestamp in name, use a different format
+            if filename.startswith('game_'):
+                display_text = f"{creation_time.strftime('%m-%d %H:%M')} 对局"
+            else:
+                # Remove .pgn extension and use filename as display text
+                display_text = filename.replace('.pgn', '')
             display_list.append(display_text)
             self.pgn_file_map[display_text] = filename
         
@@ -1467,12 +1484,12 @@ class ChineseChess:
             pgn_col = chr(ord('A') + (8 - col))
             pgn_row = str(row)
         return pgn_col + pgn_row
-
+        
     def save_game_to_pgn(self):
-        """Save the game history to a PGN file"""
+        """Save the game history to a TXT file"""
         if not self.move_history:
             return
-            
+                
         import os
         from datetime import datetime
         
@@ -1481,10 +1498,9 @@ class ChineseChess:
         if not os.path.exists(records_dir):
             os.makedirs(records_dir)
         
-        # Generate filename with timestamp
+        # Generate filename with timestamp but use .txt extension
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = os.path.join(records_dir, f"game_{timestamp}.pgn")
-        
+        filename = os.path.join(records_dir, f"game_{timestamp}.txt")  # Changed extension to .txt
         
         with open(filename, 'w', encoding='utf-8') as f:
             # Write PGN headers
@@ -1497,7 +1513,6 @@ class ChineseChess:
             else:
                 f.write('[Result "1-0"]\n' if self.current_player == 'black' else '[Result "0-1"]\n')
             f.write('\n')
-
         
             # Write moves
             move_pairs = []
