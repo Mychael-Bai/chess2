@@ -12,6 +12,8 @@ import time
 # max_mate_depth is 4 which the efficiency is verified
 # fixed the blank board issue
 
+# fixed the descriptor when in normal play mode
+
 class ChessValidator:
     """A lightweight class for chess move validation without GUI components"""
     def __init__(self, board, flipped=False):
@@ -760,9 +762,9 @@ class MCTS:
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
-        TOTAL_TIME_LIMIT = 2  # Total time limit of 30 seconds
-        CHECK_ESCAPE_TIME_LIMIT = 20  # Maximum time for finding best escape from check
-        CHECKMATE_TIME_LIMIT = 30  # Maximum time for checkmate search
+        TOTAL_TIME_LIMIT = 20  # Total time limit of 30 seconds
+        CHECK_ESCAPE_TIME_LIMIT = 5  # Maximum time for finding best escape from check
+        CHECKMATE_TIME_LIMIT = 10  # Maximum time for checkmate search
         
         overall_start_time = time.time()
         
@@ -804,12 +806,12 @@ class MCTS:
                     # Sort moves by score, prioritizing moves that lead to better positions
                     moves.sort(key=lambda x: x[2], reverse=True)
                     # Return the highest scored move
-                    return (moves[0][0], moves[0][1])
+                    return (moves[0][0], (moves[0][1]))
             except TimeoutError:
                 # If we timeout but have found some moves, use the best one found so far
                 if moves:
                     moves.sort(key=lambda x: x[2], reverse=True)
-                    return (moves[0][0], moves[0][1])
+                    return (moves[0][0], (moves[0][1]))
                 # If no moves found within time limit, proceed to MCTS search
         
         else:
@@ -1235,7 +1237,15 @@ class ChineseChess:
         # Bind mouse event
         self.canvas.bind('<Button-1>', self.on_click)
 
+    def enable_history_menu(self):
+        """Enable the history menu"""
+        if hasattr(self, 'history_menu'):
+            self.history_menu.config(state='readonly')
 
+    def disable_history_menu(self):
+        """Disable the history menu"""
+        if hasattr(self, 'history_menu'):
+            self.history_menu.config(state='disabled')
 
     def create_history_menu(self):
         """Create a menu for opening game histories"""
@@ -1315,6 +1325,7 @@ class ChineseChess:
         if display_list:
             self.history_menu.set("历史对局")
 
+
     def load_selected_game(self, event=None):
         """Load and display the selected game history"""
         selected = self.history_var.get()
@@ -1329,61 +1340,65 @@ class ChineseChess:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 
-            # Split moves and filter out empty strings
-            moves = [move.strip() for move in content.split() if move.strip()]
-            
-            # Reset the game state
-            self.initialize_board()
-            self.board_copy = [row[:] for row in self.board]
+            # Initialize board to starting position
+            self.initialize_board()  # Set up initial board
+            self.board_copy = [row[:] for row in self.board]  # Store initial state
+            current_board = [row[:] for row in self.board]  # Working copy
             self.move_history = []
             self.move_history_records = []
             self.move_history_numbers = []
             self.highlighted_positions = []
             self.current_player = 'red'
             
-            current_board = [row[:] for row in self.board]
+            # Draw initial board immediately
+            self.draw_board()
             
-            # Process each move
+            # Split moves and filter out empty strings and 'END'
+            moves = [move.strip() for move in content.split() if move.strip() and move != "END"]
+            
+            # Process each move and translate to Chinese notation
             for move in moves:
-                # Convert coordinate notation (e.g., "E5-C6") to board positions
                 try:
                     coords = move.split('-')
                     if len(coords) != 2:
                         continue
                         
                     from_coord, to_coord = coords
-                    # Convert coordinates to board positions
                     from_col = ord(from_coord[0]) - ord('A')
                     from_row = 9 - int(from_coord[1])
                     to_col = ord(to_coord[0]) - ord('A')
                     to_row = 9 - int(to_coord[1])
                     
-                    # Get the piece at the from position
                     piece = current_board[from_row][from_col]
                     if piece:
-                        # Make the move
+                        chinese_notation = self.get_move_text(
+                            (from_row, from_col),
+                            (to_row, to_col),
+                            piece,
+                            current_board
+                        )
+                        
                         current_board[to_row][to_col] = piece
                         current_board[from_row][from_col] = None
                         
-                        # Record the move
                         self.move_history.append({
                             'from_pos': (from_row, from_col),
                             'to_pos': (to_row, to_col),
                             'piece': piece,
                             'board_state': [row[:] for row in current_board]
                         })
-                        self.move_history_records.append(move)
+                        self.move_history_records.append(chinese_notation)
                         self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
                         
                 except (IndexError, ValueError) as e:
                     print(f"Error processing move: {move}, {str(e)}")
                     continue
-            
-            # Update the display
+           
+            # Update the display with Chinese notation
             self.move_text.config(state='normal')
             self.move_text.delete('1.0', tk.END)
             
-            # Display moves in pairs
+            # Display moves in pairs with Chinese notation
             move_count = len(self.move_history_records)
             for i in range(0, move_count, 2):
                 move_number = (i // 2) + 1
@@ -1391,14 +1406,13 @@ class ChineseChess:
                 if i + 1 < move_count:
                     black_move = self.move_history_records[i + 1]
                     self.move_text.insert(tk.END, f"{move_number}. {red_move}\n")
-                    
                     take_up_space = ' ' * len(str(move_number))
                     self.move_text.insert(tk.END, f"{take_up_space}  {black_move}\n")
                 else:
                     self.move_text.insert(tk.END, f"{move_number}. {red_move}\n")
             
             self.move_text.config(state='disabled')
-            self.move_text.see(tk.END)
+            self.move_text.see('1.0')  # Scroll to the top
             
             # Enable replay functionality
             self.replay_mode = True
@@ -1557,6 +1571,8 @@ class ChineseChess:
         # Check for checkmate
         if self.is_checkmate(self.current_player):
             self.handle_game_end()
+            self.enable_history_menu()
+
         else:
             self.game_over = False
         
@@ -1636,7 +1652,7 @@ class ChineseChess:
         
         self.stop_timer()  # Stop timer when AI starts its move
         self.timer_label.config(text='000')
-
+        self.disable_history_menu()
 
         self.check_rotate = False
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]
@@ -1846,7 +1862,7 @@ class ChineseChess:
 
             self.stop_timer()  # Stop timer when AI starts its move
             self.timer_label.config(text='000')
-
+            self.disable_history_menu()
 
             if not self.validate_piece_positions():
 
@@ -2265,6 +2281,9 @@ class ChineseChess:
                             (row, col),
                             self.board[row][col]
                         )
+                        
+                        if len(self.move_history) == 1:
+                            self.disable_history_menu()
 
                     # Reset selected piece
                     self.selected_piece = None
@@ -2301,6 +2320,7 @@ class ChineseChess:
                 self.timer_label.config(text='000')
                 
                 self.window.after(0, self.handle_game_end)
+                self.enable_history_menu()
                 self.switch_color_button.config(state=tk.NORMAL)
                 return
 
@@ -2316,6 +2336,7 @@ class ChineseChess:
                 if self.is_in_check(ai_color):
                     self.game_over = True
                     self.window.after(0, self.handle_game_end)
+                    self.enable_history_menu()
                 return
             
             # Create MCTS instance with reference to the game
@@ -2754,64 +2775,54 @@ class ChineseChess:
         # Wait for window to close
         self.window.wait_window(warn_window)
 
-    def get_piece_position_descriptor(self, from_pos, to_pos, piece, board=None):
+
+    def get_piece_position_descriptor(self, from_pos, to_pos, piece, current_board=None):
         """
-        Determine 前/后 based on proximity to opponent's king.
-        If the piece is closer to the opponent's king, it's labeled '前',
-        otherwise it's labeled '后'.
-        board parameter allows passing in a specific board state.
+        Determine 前/后 based on piece positions.
+        current_board parameter allows passing the correct board state.
         """
         from_row, from_col = from_pos
         to_row, to_col = to_pos
 
-        piece_color = piece[0]  # 'R' for red or 'B' for black
-        piece_type = piece[1]   # The type of piece (炮, 車, etc.)
+        piece_color = piece[0]
+        piece_type = piece[1]
         
         # Use provided board state or default to self.board
-        current_board = board if board is not None else self.board
+        board_to_use = current_board if current_board is not None else self.board
         
         # Find all identical pieces in the same column
         identical_positions = []
         for row in range(10):
-            current_piece = current_board[row][from_col]
+            current_piece = board_to_use[row][from_col]
             if current_piece:
                 if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
                     identical_positions.append(row)
                 else:
-                    if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
-                        identical_positions.append(row)
-        identical_positions.append(from_row)
-                
+                    if not current_board:
+                        if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
+                            identical_positions.append(row)
+                    else:
+                        if current_piece[0] == piece_color and current_piece[1] == piece_type:
+                            identical_positions.append(row)
+        if not current_board:
+            identical_positions.append(from_row)
+
         # If there are two identical pieces in the same column
         if len(identical_positions) == 2:
-            
             if self.flipped == False:
                 if piece_color == 'R':
-                    if from_row == min(identical_positions):
-                        return "前"
-                    else:
-                        return "后"
+                    return "前" if from_row == min(identical_positions) else "后"
                 else:
-                    if from_row == min(identical_positions):
-                        return "后"
-                    else:
-                        return "前"
+                    return "后" if from_row == min(identical_positions) else "前"
             else:
                 if piece_color == 'R':
-                    if from_row == min(identical_positions):
-                        return "后"
-                    else:
-                        return "前"
+                    return "后" if from_row == min(identical_positions) else "前"
                 else:
-                    if from_row == min(identical_positions):
-                        return "前"
-                    else:
-                        return "后"
-                     
-        # Return empty string if there's only one piece of this type in the column
+                    return "前" if from_row == min(identical_positions) else "后"
+                         
         return ""
 
-    def get_move_text(self, from_pos, to_pos, piece):
+    def get_move_text(self, from_pos, to_pos, piece, current_board=None):
         """
         Convert a move into Chinese chess notation, accounting for board orientation.
         Adjusts move notation based on the visual perspective of each side.
@@ -2844,7 +2855,7 @@ class ChineseChess:
                 to_col_text = columns[8 - to_col]
         
         # Get position descriptor (前/后)
-        position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece)
+        position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece, current_board)
         
         # Determine direction based on visual perspective
         if piece_color == 'R':
@@ -3401,6 +3412,7 @@ class ChineseChess:
 
         self.stop_timer()  # Stop timer when AI starts its move
         self.timer_label.config(text='000')
+        self.disable_history_menu()
 
         self.check_rotate = False
         self.rotate_board = [[None for _ in range(9)] for _ in range(10)]

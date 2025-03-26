@@ -12,6 +12,8 @@ import time
 # max_mate_depth is 4 which the efficiency is verified
 # fixed the blank board issue
 
+# fixed the descriptor when in normal play mode
+
 class ChessValidator:
     """A lightweight class for chess move validation without GUI components"""
     def __init__(self, board, flipped=False):
@@ -760,9 +762,9 @@ class MCTS:
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
-        TOTAL_TIME_LIMIT = 2  # Total time limit of 30 seconds
-        CHECK_ESCAPE_TIME_LIMIT = 20  # Maximum time for finding best escape from check
-        CHECKMATE_TIME_LIMIT = 30  # Maximum time for checkmate search
+        TOTAL_TIME_LIMIT = 20  # Total time limit of 30 seconds
+        CHECK_ESCAPE_TIME_LIMIT = 5  # Maximum time for finding best escape from check
+        CHECKMATE_TIME_LIMIT = 10  # Maximum time for checkmate search
         
         overall_start_time = time.time()
         
@@ -804,12 +806,12 @@ class MCTS:
                     # Sort moves by score, prioritizing moves that lead to better positions
                     moves.sort(key=lambda x: x[2], reverse=True)
                     # Return the highest scored move
-                    return (moves[0][0], moves[0][1])
+                    return (moves[0][0], (moves[0][1]))
             except TimeoutError:
                 # If we timeout but have found some moves, use the best one found so far
                 if moves:
                     moves.sort(key=lambda x: x[2], reverse=True)
-                    return (moves[0][0], moves[0][1])
+                    return (moves[0][0], (moves[0][1]))
                 # If no moves found within time limit, proceed to MCTS search
         
         else:
@@ -1235,7 +1237,15 @@ class ChineseChess:
         # Bind mouse event
         self.canvas.bind('<Button-1>', self.on_click)
 
+    def enable_history_menu(self):
+        """Enable the history menu"""
+        if hasattr(self, 'history_menu'):
+            self.history_menu.config(state='readonly')
 
+    def disable_history_menu(self):
+        """Disable the history menu"""
+        if hasattr(self, 'history_menu'):
+            self.history_menu.config(state='disabled')
 
     def create_history_menu(self):
         """Create a menu for opening game histories"""
@@ -1268,20 +1278,32 @@ class ChineseChess:
         import os
         from datetime import datetime
 
-        # Get list of PGN files from game_records directory
+        # Get list of TXT files from game_records directory
         records_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chinese_chess_records")
         if not os.path.exists(records_dir):
             os.makedirs(records_dir)
         
         pgn_files = []
         for file in os.listdir(records_dir):
-            if file.endswith(".pgn"):
-                # Get file creation time
-                file_path = os.path.join(records_dir, file)
-                creation_time = os.path.getctime(file_path)
-                pgn_files.append((datetime.fromtimestamp(creation_time), file))
+            if file.endswith(".txt"):  # Changed from .pgn to .txt
+                try:
+                    # Get file modification time instead of creation time
+                    file_path = os.path.join(records_dir, file)
+                    mod_time = os.path.getmtime(file_path)
+                    # Try to extract date from filename if it follows standard format
+                    try:
+                        # First try standard format (YYYYMMDD_HHMMSS)
+                        date_str = file.split('game_')[1].split('.')[0]
+                        file_time = datetime.strptime(date_str, '%Y%m%d_%H%M%S')
+                    except:
+                        # If that fails, use file modification time
+                        file_time = datetime.fromtimestamp(mod_time)
+                    pgn_files.append((file_time, file))
+                except:
+                    # If any error occurs, just use current time
+                    pgn_files.append((datetime.now(), file))
         
-        # Sort files by creation time, newest first
+        # Sort files by time, newest first
         pgn_files.sort(reverse=True)
         
         # Format display strings for the dropdown
@@ -1289,7 +1311,12 @@ class ChineseChess:
         self.pgn_file_map = {}  # Map display strings to filenames
         
         for creation_time, filename in pgn_files:
-            display_text = f"{creation_time.strftime('%m-%d %H:%M')} 对局"
+            # For external files without timestamp in name, use a different format
+            if filename.startswith('game_'):
+                display_text = f"{creation_time.strftime('%m-%d %H:%M')} 对局"
+            else:
+                # Remove .pgn extension and use filename as display text
+                display_text = filename.replace('.pgn', '')
             display_list.append(display_text)
             self.pgn_file_map[display_text] = filename
         
@@ -1298,6 +1325,7 @@ class ChineseChess:
         if display_list:
             self.history_menu.set("历史对局")
 
+
     def load_selected_game(self, event=None):
         """Load and display the selected game history"""
         selected = self.history_var.get()
@@ -1305,7 +1333,6 @@ class ChineseChess:
             return
         
         filename = self.pgn_file_map[selected]
-        # Change file path to use records_dir
         records_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chinese_chess_records")
         file_path = os.path.join(records_dir, filename)
         
@@ -1313,90 +1340,65 @@ class ChineseChess:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 
-            # Parse the PGN content
-            moves_start = content.find('\n\n') + 2
-            moves_text = content[moves_start:].strip()
-            
-            # Reset the game state
-            self.initialize_board()
-            self.board_copy = [row[:] for row in self.board]
+            # Initialize board to starting position
+            self.initialize_board()  # Set up initial board
+            self.board_copy = [row[:] for row in self.board]  # Store initial state
+            current_board = [row[:] for row in self.board]  # Working copy
             self.move_history = []
             self.move_history_records = []
             self.move_history_numbers = []
             self.highlighted_positions = []
             self.current_player = 'red'
             
+            # Draw initial board immediately
+            self.draw_board()
+            
             # Split moves and filter out empty strings and 'END'
-            moves = [move for move in moves_text.split() if move and move != "END"]
-            current_board = [row[:] for row in self.board]
-            move_pairs = []
+            moves = [move.strip() for move in content.split() if move.strip() and move != "END"]
             
-            # Group moves into pairs
-            current_pair = []
+            # Process each move and translate to Chinese notation
             for move in moves:
-                if move.endswith('.'):  # This is a move number
-                    if current_pair:  # If we have a previous pair, add it
-                        move_pairs.append(current_pair)
-                    current_pair = []
-                else:
-                    current_pair.append(move)
-                    if len(current_pair) == 2:  # If we have a complete pair
-                        move_pairs.append(current_pair)
-                        current_pair = []
-            
-            # Add the last pair if it's incomplete
-            if current_pair:
-                move_pairs.append(current_pair)
-            
-            # Process each pair of moves
-            for pair in move_pairs:
-                # Process red move
-                if pair:  # If there's at least one move in the pair
-                    red_move = pair[0]
-                    try:
-                        from_pos, to_pos = self.convert_pgn_to_board_position(red_move, current_board, 'red')
-                        if from_pos and to_pos:
-                            piece = current_board[from_pos[0]][from_pos[1]]
-                            current_board[to_pos[0]][to_pos[1]] = piece
-                            current_board[from_pos[0]][from_pos[1]] = None
-                            self.move_history.append({
-                                'from_pos': from_pos,
-                                'to_pos': to_pos,
-                                'piece': piece,
-                                'board_state': [row[:] for row in current_board]
-                            })
-                            self.move_history_records.append(red_move)
-                            self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-                    except IndexError:
-                        print(f"Error processing red move: {red_move}")
+                try:
+                    coords = move.split('-')
+                    if len(coords) != 2:
                         continue
+                        
+                    from_coord, to_coord = coords
+                    from_col = ord(from_coord[0]) - ord('A')
+                    from_row = 9 - int(from_coord[1])
+                    to_col = ord(to_coord[0]) - ord('A')
+                    to_row = 9 - int(to_coord[1])
                     
-                    # Process black move if it exists
-                    if len(pair) > 1:
-                        black_move = pair[1]
-                        try:
-                            from_pos, to_pos = self.convert_pgn_to_board_position(black_move, current_board, 'black')
-                            if from_pos and to_pos:
-                                piece = current_board[from_pos[0]][from_pos[1]]
-                                current_board[to_pos[0]][to_pos[1]] = piece
-                                current_board[from_pos[0]][from_pos[1]] = None
-                                self.move_history.append({
-                                    'from_pos': from_pos,
-                                    'to_pos': to_pos,
-                                    'piece': piece,
-                                    'board_state': [row[:] for row in current_board]
-                                })
-                                self.move_history_records.append(black_move)
-                                self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
-                        except IndexError:
-                            print(f"Error processing black move: {black_move}")
-                            continue
-            
-            # Update the display
+                    piece = current_board[from_row][from_col]
+                    if piece:
+                        chinese_notation = self.get_move_text(
+                            (from_row, from_col),
+                            (to_row, to_col),
+                            piece,
+                            current_board
+                        )
+                        
+                        current_board[to_row][to_col] = piece
+                        current_board[from_row][from_col] = None
+                        
+                        self.move_history.append({
+                            'from_pos': (from_row, from_col),
+                            'to_pos': (to_row, to_col),
+                            'piece': piece,
+                            'board_state': [row[:] for row in current_board]
+                        })
+                        self.move_history_records.append(chinese_notation)
+                        self.move_history_numbers.append([self.top_numbers, self.bottom_numbers])
+                        
+                except (IndexError, ValueError) as e:
+                    print(f"Error processing move: {move}, {str(e)}")
+                    continue
+           
+            # Update the display with Chinese notation
             self.move_text.config(state='normal')
             self.move_text.delete('1.0', tk.END)
             
-            # Display moves in pairs
+            # Display moves in pairs with Chinese notation
             move_count = len(self.move_history_records)
             for i in range(0, move_count, 2):
                 move_number = (i // 2) + 1
@@ -1404,17 +1406,13 @@ class ChineseChess:
                 if i + 1 < move_count:
                     black_move = self.move_history_records[i + 1]
                     self.move_text.insert(tk.END, f"{move_number}. {red_move}\n")
-                    
-                    take_up_space = ''
-                    for i in range(len(str(move_number))):
-                        take_up_space += ' '
-                        
+                    take_up_space = ' ' * len(str(move_number))
                     self.move_text.insert(tk.END, f"{take_up_space}  {black_move}\n")
                 else:
                     self.move_text.insert(tk.END, f"{move_number}. {red_move}\n")
             
             self.move_text.config(state='disabled')
-            self.move_text.see(tk.END)
+            self.move_text.see('1.0')  # Scroll to the top
             
             # Enable replay functionality
             self.replay_mode = True
@@ -1430,7 +1428,7 @@ class ChineseChess:
             # Show records if they're hidden
             if not self.records_seen:
                 self.toggle_records()
-            
+                
         except Exception as e:
             self.show_centered_warning("错误", f"无法加载对局记录: {str(e)}")
 
@@ -1467,72 +1465,37 @@ class ChineseChess:
             pgn_col = chr(ord('A') + (8 - col))
             pgn_row = str(row)
         return pgn_col + pgn_row
-
+        
     def save_game_to_pgn(self):
-        """Save the game history to a PGN file"""
+        """Save the game history to a TXT file in coordinate format"""
         if not self.move_history:
             return
-            
+                
         import os
         from datetime import datetime
         
-        # Create game_records directory if it doesn't exist
         records_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chinese_chess_records")
         if not os.path.exists(records_dir):
             os.makedirs(records_dir)
         
-        # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = os.path.join(records_dir, f"game_{timestamp}.pgn")
-        
+        filename = os.path.join(records_dir, f"game_{timestamp}.txt")
         
         with open(filename, 'w', encoding='utf-8') as f:
-            # Write PGN headers
-            f.write(f'[Date "{datetime.now().strftime("%Y.%m.%d")}"]\n')
-            f.write(f'[Time "{datetime.now().strftime("%H:%M:%S")}"]\n')
-            f.write(f'[Red "{os.getlogin()}"]\n')  # Current user as Red player
-            f.write('[Black "AI"]\n')
-            if self.flipped:
-                f.write('[Result "1-0"]\n' if self.current_player == 'black' else '[Result "0-1"]\n')
-            else:
-                f.write('[Result "1-0"]\n' if self.current_player == 'black' else '[Result "0-1"]\n')
-            f.write('\n')
-
-        
-            # Write moves
-            move_pairs = []
-            current_pair = []
-            
-            for i, move in enumerate(self.move_history):
+            # Save moves in coordinate format
+            for move in self.move_history:
                 from_pos = move['from_pos']
                 to_pos = move['to_pos']
-                piece = move['piece']
                 
-                # Convert positions to PGN format
-                from_pgn = self.convert_to_pgn_coordinate(from_pos[0], from_pos[1], self.flipped)
-                to_pgn = self.convert_to_pgn_coordinate(to_pos[0], to_pos[1], self.flipped)
+                # Convert positions to coordinates
+                from_coord = chr(ord('A') + from_pos[1]) + str(9 - from_pos[0])
+                to_coord = chr(ord('A') + to_pos[1]) + str(9 - to_pos[0])
                 
-                # Create move notation
-                pgn_move = f"{piece[1]}{from_pgn}-{to_pgn}"
-                
-                current_pair.append(pgn_move)
-                if len(current_pair) == 2:
-                    move_pairs.append(current_pair)
-                    current_pair = []
-            
-            # Handle any remaining single move
-            if current_pair:
-                move_pairs.append(current_pair)
-            
-            # Write moves in standard format
-            for i, pair in enumerate(move_pairs):
-                move_num = i + 1
-                if len(pair) == 2:
-                    f.write(f"{move_num}. {pair[0]} {pair[1]}\n")
-                else:
-                    f.write(f"{move_num}. {pair[0]} ")
+                # Write move in format "E5-C6"
+                f.write(f"{from_coord}-{to_coord} ")
             
             f.write("END")
+        
 
     def start_timer(self):
         """Start the timer"""
@@ -1608,6 +1571,8 @@ class ChineseChess:
         # Check for checkmate
         if self.is_checkmate(self.current_player):
             self.handle_game_end()
+            self.enable_history_menu()
+
         else:
             self.game_over = False
         
@@ -1897,7 +1862,7 @@ class ChineseChess:
 
             self.stop_timer()  # Stop timer when AI starts its move
             self.timer_label.config(text='000')
-
+            self.disable_history_menu()
 
             if not self.validate_piece_positions():
 
@@ -2285,6 +2250,9 @@ class ChineseChess:
                         # Switch players
                         self.current_player = 'black' if self.current_player == 'red' else 'red'
 
+                        if len(self.move_history) == 1:
+                            self.disable_history_menu()
+                        
                         self.window.after(500, self.make_ai_move)
 
                         self.move_rotate = False
@@ -2352,6 +2320,7 @@ class ChineseChess:
                 self.timer_label.config(text='000')
                 
                 self.window.after(0, self.handle_game_end)
+                self.enable_history_menu()
                 self.switch_color_button.config(state=tk.NORMAL)
                 return
 
@@ -2367,6 +2336,7 @@ class ChineseChess:
                 if self.is_in_check(ai_color):
                     self.game_over = True
                     self.window.after(0, self.handle_game_end)
+                    self.enable_history_menu()
                 return
             
             # Create MCTS instance with reference to the game
@@ -2805,64 +2775,54 @@ class ChineseChess:
         # Wait for window to close
         self.window.wait_window(warn_window)
 
-    def get_piece_position_descriptor(self, from_pos, to_pos, piece, board=None):
+
+    def get_piece_position_descriptor(self, from_pos, to_pos, piece, current_board=None):
         """
-        Determine 前/后 based on proximity to opponent's king.
-        If the piece is closer to the opponent's king, it's labeled '前',
-        otherwise it's labeled '后'.
-        board parameter allows passing in a specific board state.
+        Determine 前/后 based on piece positions.
+        current_board parameter allows passing the correct board state.
         """
         from_row, from_col = from_pos
         to_row, to_col = to_pos
 
-        piece_color = piece[0]  # 'R' for red or 'B' for black
-        piece_type = piece[1]   # The type of piece (炮, 車, etc.)
+        piece_color = piece[0]
+        piece_type = piece[1]
         
         # Use provided board state or default to self.board
-        current_board = board if board is not None else self.board
+        board_to_use = current_board if current_board is not None else self.board
         
         # Find all identical pieces in the same column
         identical_positions = []
         for row in range(10):
-            current_piece = current_board[row][from_col]
+            current_piece = board_to_use[row][from_col]
             if current_piece:
                 if piece_type == '馬' and current_piece[0] == piece_color and current_piece[1] == piece_type:
                     identical_positions.append(row)
                 else:
-                    if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
-                        identical_positions.append(row)
-        identical_positions.append(from_row)
-                
+                    if not current_board:
+                        if current_piece[0] == piece_color and current_piece[1] == piece_type and row != to_row:
+                            identical_positions.append(row)
+                    else:
+                        if current_piece[0] == piece_color and current_piece[1] == piece_type:
+                            identical_positions.append(row)
+        if not current_board:
+            identical_positions.append(from_row)
+
         # If there are two identical pieces in the same column
         if len(identical_positions) == 2:
-            
             if self.flipped == False:
                 if piece_color == 'R':
-                    if from_row == min(identical_positions):
-                        return "前"
-                    else:
-                        return "后"
+                    return "前" if from_row == min(identical_positions) else "后"
                 else:
-                    if from_row == min(identical_positions):
-                        return "后"
-                    else:
-                        return "前"
+                    return "后" if from_row == min(identical_positions) else "前"
             else:
                 if piece_color == 'R':
-                    if from_row == min(identical_positions):
-                        return "后"
-                    else:
-                        return "前"
+                    return "后" if from_row == min(identical_positions) else "前"
                 else:
-                    if from_row == min(identical_positions):
-                        return "前"
-                    else:
-                        return "后"
-                     
-        # Return empty string if there's only one piece of this type in the column
+                    return "前" if from_row == min(identical_positions) else "后"
+                         
         return ""
 
-    def get_move_text(self, from_pos, to_pos, piece):
+    def get_move_text(self, from_pos, to_pos, piece, current_board=None):
         """
         Convert a move into Chinese chess notation, accounting for board orientation.
         Adjusts move notation based on the visual perspective of each side.
@@ -2895,7 +2855,7 @@ class ChineseChess:
                 to_col_text = columns[8 - to_col]
         
         # Get position descriptor (前/后)
-        position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece)
+        position_descriptor = self.get_piece_position_descriptor(from_pos, to_pos, piece, current_board)
         
         # Determine direction based on visual perspective
         if piece_color == 'R':
