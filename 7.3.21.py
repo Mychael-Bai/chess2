@@ -12,7 +12,7 @@ import time
 # max_mate_depth is 4 which the efficiency is verified
 # fixed the blank board issue
 
-# fixed the dropdown list font size issue
+# removed the _is_valid_move method
 
 class ChessValidator:
     """A lightweight class for chess move validation without GUI components"""
@@ -403,8 +403,6 @@ class MCTSNode:
         
         # Store root reference for AI color comparison
         self.root = self if parent is None else parent.root
-
-    
     
     def _get_valid_moves(self, color=None):
         """Get all valid moves for the specified color (or current color if not specified)"""
@@ -417,7 +415,7 @@ class MCTSNode:
                 if piece and piece[0] == color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self._is_valid_move((row, col), (to_row, to_col)):
+                            if self.validator.is_valid_move((row, col), (to_row, to_col)):
                                 # Test if move would result in check
                                 test_state = copy.deepcopy(self.state)
                                 test_state[to_row][to_col] = test_state[row][col]
@@ -427,38 +425,6 @@ class MCTSNode:
                                     moves.append(((row, col), (to_row, to_col)))
                                 self.validator.board = self.state
         return moves
-    
-    def _is_valid_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.state[from_row][from_col]
-        
-        if not piece:
-            return False
-            
-        if not (0 <= to_row < 10 and 0 <= to_col < 9):
-            return False
-            
-        if self.state[to_row][to_col] and self.state[to_row][to_col][0] == piece[0]:
-            return False
-
-        piece_type = piece[1]
-        if piece_type in ['帥', '將']:
-            return self.validator.is_valid_general_move(from_pos, to_pos)
-        elif piece_type in ['仕', '士']:
-            return self.validator.is_valid_advisor_move(from_pos, to_pos)
-        elif piece_type in ['相', '象']:
-            return self.validator.is_valid_elephant_move(from_pos, to_pos)
-        elif piece_type == '馬':
-            return self.validator.is_valid_horse_move(from_pos, to_pos)
-        elif piece_type == '車':
-            return self.validator.is_valid_chariot_move(from_pos, to_pos)
-        elif piece_type == '炮':
-            return self.validator.is_valid_cannon_move(from_pos, to_pos)
-        elif piece_type in ['兵', '卒']:
-            return self.validator.is_valid_pawn_move(from_pos, to_pos)
-        return False
-
 
     def uct_value(self, exploration_constant, k=0.1):
         """Calculate UCT value with a distance-based heuristic for AI moves."""
@@ -540,6 +506,7 @@ class MCTS:
                     else:
                         validator.board[current_pos[0]][current_pos[1]] = original_at_current
         return 3  # Distance > 2
+
 
     def select_node(self):
         """Select a node to expand using UCT"""
@@ -659,6 +626,7 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
     def find_mate_in_n(self, board, color, n, start_time, time_limit):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         # start_time is now a required parameter
@@ -756,6 +724,7 @@ class MCTS:
                         if count >= 3:  # Stop at 3 as per requirement
                             return count
         return count
+
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
@@ -861,7 +830,6 @@ class MCTS:
         if not self.root.children:
             return None
         return max(self.root.children, key=lambda n: n.visits).move
-
 
     def _evaluate_position(self, state, color):
         """Enhanced position evaluation with strategic considerations"""

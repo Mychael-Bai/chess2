@@ -1,3 +1,4 @@
+
 import tkinter as tk
 from tkinter import ttk
 import os
@@ -8,21 +9,373 @@ import random
 import copy
 import time
 
+# new position evaluation function
 
-# max_mate_depth is 4 which the efficiency is verified
-# fixed the blank board issue
 
-# fixed the descriptor when in normal play mode
+# --- Piece Values (Tunable) ---
+PIECE_VALUES = {
+    # Use positive values, sign will be determined by color
+    '將': 10000, '帥': 10000,
+    '車': 900,
+    '馬': 400,
+    '炮': 450,  # Slightly different from Horse
+    '象': 200, '相': 200,
+    '士': 200, '仕': 200,
+    '卒': 100, '兵': 100
+}
+# Bonus for pawns crossing the river
+PAWN_ACROSS_RIVER_BONUS_MG = 80  # Middlegame
+PAWN_ACROSS_RIVER_BONUS_EG = 120 # Endgame
+
+# --- Evaluation Weights (Tunable) ---
+MATERIAL_WEIGHT = 1.0
+PST_WEIGHT = 0.1       # Position value weight
+MOBILITY_WEIGHT = 0.05   # Mobility weight
+KING_SAFETY_WEIGHT = 0.15 # King safety weight
+CONNECTED_DEFENDERS_WEIGHT = 0.05 # Bonus for connected Advisors/Elephants
+
+# --- Piece Square Tables (PSTs) ---
+# Values represent bonuses/penalties for a piece being on that square.
+# Indexed by [row][col]. Needs careful flipping logic.
+# These are EXAMPLE values - Tuning is essential!
+
+# Note: Define tables from Black's perspective (row 0 is Black's baseline)
+# We will flip the row index for Red pieces or when the board is flipped.
+
+# King (General) - Restricted to Palace
+# fmt: off
+KING_PST_BLACK = [
+    [ 0,  0,  0,  5,  8,  5,  0,  0,  0],
+    [ 0,  0,  0,  5,  5,  5,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0], # Red Palace Area (Irrelevant for Black King PST)
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0]
+]
+
+# Advisor - Restricted to Palace
+ADVISOR_PST_BLACK = [
+    [ 0,  0,  0,  5,  0,  5,  0,  0,  0],
+    [ 0,  0,  0,  0, 10,  0,  0,  0,  0],
+    [ 0,  0,  0,  5,  0,  5,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0]
+]
+
+# Elephant - Restricted to own side, cannot cross river
+ELEPHANT_PST_BLACK = [
+    [ 0,  0,  5,  0,  0,  0,  5,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 5,  0,  0,  0, 10,  0,  0,  0,  5],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  5,  0,  0,  0,  5,  0,  0],
+    [-5, -5, -5, -5, -5, -5, -5, -5, -5], # Penalty if somehow crossed river (shouldn't happen)
+    [-5, -5, -5, -5, -5, -5, -5, -5, -5],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0], # Red Area (Irrelevant for Black Elephant PST)
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0]
+]
+
+# Horse
+HORSE_PST = [
+    [ 0, -3,  0,  0,  0,  0,  0, -3,  0],
+    [ 0,  0,  5,  5,  8,  5,  5,  0,  0],
+    [ 0,  5, 10, 12, 15, 12, 10,  5,  0],
+    [ 5,  8, 12, 15, 18, 15, 12,  8,  5],
+    [ 5, 10, 12, 16, 15, 16, 12, 10,  5],
+    [ 5,  8, 10, 15, 12, 15, 10,  8,  5],
+    [ 0,  5,  8, 10, 10, 10,  8,  5,  0],
+    [ 0,  0,  4,  5,  5,  5,  4,  0,  0],
+    [ 0, -5,  0,  0,  0,  0,  0, -5,  0],
+    [-5,-10, -5, -5, -5, -5, -5,-10, -5]
+]
+
+# Rook (Chariot)
+ROOK_PST = [
+    [ 10, 10, 10, 12, 12, 12, 10, 10, 10],
+    [ 12, 15, 14, 16, 16, 16, 14, 15, 12],
+    [ 12, 14, 12, 15, 15, 15, 12, 14, 12],
+    [ 12, 15, 12, 16, 16, 16, 12, 15, 12],
+    [ 12, 12, 12, 14, 14, 14, 12, 12, 12],
+    [ 10, 10, 10, 12, 12, 12, 10, 10, 10], # River
+    [ 8,  8,  8, 10, 10, 10,  8,  8,  8],
+    [ 6,  6,  6,  8,  8,  8,  6,  6,  6],
+    [ 4,  4,  4,  6,  6,  6,  4,  4,  4],
+    [ 0,  0,  0,  5,  0,  5,  0,  0,  0]
+]
+
+# Cannon
+CANNON_PST = [
+    [ 5,  5,  5,  5,  5,  5,  5,  5,  5],
+    [ 4,  4,  4,  8, 10,  8,  4,  4,  4],
+    [ 4,  4,  4,  8,  8,  8,  4,  4,  4],
+    [ 6,  8,  8,  8,  8,  8,  8,  8,  6],
+    [ 8,  8,  8,  8,  8,  8,  8,  8,  8],
+    [ 8,  8, 10, 10, 10, 10, 10,  8,  8], # Slightly better near center and enemy lines
+    [10, 10, 10, 12, 12, 12, 10, 10, 10],
+    [10, 10, 10, 10, 10, 10, 10, 10, 10],
+    [ 8,  8,  8,  8,  8,  8,  8,  8,  8],
+    [ 5,  5,  5,  5,  5,  5,  5,  5,  5]
+]
+
+# Pawn (Soldier) - Needs special handling for crossing the river
+PAWN_PST = [
+    [ 0,  0,  0, 20, 25, 20,  0,  0,  0], # Enemy baseline - very valuable
+    [ 0,  0,  0, 15, 18, 15,  0,  0,  0],
+    [ 0,  0,  0, 12, 15, 12,  0,  0,  0],
+    [ 0,  0,  0, 10, 12, 10,  0,  0,  0],
+    [ 5,  5,  8,  8, 10,  8,  8,  5,  5], # Just across river
+    [ 5,  5,  5,  5,  5,  5,  5,  5,  5], # On river line
+    [ 2,  2,  2,  3,  3,  3,  2,  2,  2], # Before river
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  0,  0,  0,  0]
+]
+# fmt: on
+
+# --- Combine PSTs into a dictionary ---
+# We'll use specific PSTs for Black's palace pieces and general ones for others
+# The get_pst_score function will handle color and flipping.
+PST = {
+    '將': KING_PST_BLACK,
+    '士': ADVISOR_PST_BLACK,
+    '象': ELEPHANT_PST_BLACK,
+    '帥': KING_PST_BLACK,   # Will be flipped
+    '仕': ADVISOR_PST_BLACK, # Will be flipped
+    '相': ELEPHANT_PST_BLACK,# Will be flipped
+    '馬': HORSE_PST,
+    '車': ROOK_PST,
+    '炮': CANNON_PST,
+    '卒': PAWN_PST,
+    '兵': PAWN_PST         # Will be flipped
+}
+
+# --- Helper Functions ---
+
+def _determine_game_phase(state):
+    """ Estimate game phase (0.0 = opening, 1.0 = endgame) based on material """
+    max_material_approx = 2 * (PIECE_VALUES['車'] * 2 + PIECE_VALUES['馬'] * 2 + PIECE_VALUES['炮'] * 2 + \
+                             PIECE_VALUES['相'] * 2 + PIECE_VALUES['仕'] * 2 + PIECE_VALUES['兵'] * 5)
+    current_material = 0
+    for r in range(10):
+        for c in range(9):
+            piece = state[r][c]
+            if piece and piece[1] not in '帥將': # Exclude kings from phase calc
+                current_material += PIECE_VALUES[piece[1]]
+
+    # Normalize phase (simplified): Linear decay based on material remaining
+    phase = max(0.0, 1.0 - (current_material / (max_material_approx * 0.7))) # Consider midgame starts early
+    return phase
+
+def get_pst_score(piece_type, piece_color, r, c, flipped):
+    """ Gets the PST score considering piece, color, and board flip status """
+    pst_table = PST[piece_type]
+
+    # Determine the correct row and column for PST lookup
+    lookup_r, lookup_c = r, c
+
+    if piece_color == 'R':
+        # Red's baseline is row 9. Flip row index.
+        lookup_r = 9 - r
+        # If board is flipped, Red is now at the top, flip both row and col
+        if flipped:
+            lookup_r = r # Equivalent to 9 - (9 - r)
+            lookup_c = 8 - c
+    else: # Black piece
+        # Black's baseline is row 0.
+        # If board is flipped, Black is now at the bottom, flip both row and col
+        if flipped:
+            lookup_r = 9 - r
+            lookup_c = 8 - c
+
+    # Ensure indices are within bounds (shouldn't be necessary with valid moves, but safe)
+    lookup_r = max(0, min(9, lookup_r))
+    lookup_c = max(0, min(8, lookup_c))
+
+    return pst_table[lookup_r][lookup_c]
+
+def _get_piece_mobility(validator, state, from_pos, piece_color):
+    """ Calculates the number of *legal* moves for a piece """
+    mobility = 0
+    from_r, from_c = from_pos
+    piece = state[from_r][from_c]
+    if not piece: return 0
+
+    original_board = validator.board # Remember original validator board ref
+    validator.board = state # Point validator to current state for this calc
+
+    for to_r in range(10):
+        for to_c in range(9):
+            to_pos = (to_r, to_c)
+            if validator.is_valid_move(from_pos, to_pos):
+                # Test if the move is legal (doesn't leave king in check)
+                target_piece = state[to_r][to_c]
+                state[to_r][to_c] = piece
+                state[from_r][from_c] = None
+
+                # Check if the king of the moving color is now in check
+                in_check_after_move = validator.is_in_check(piece_color)
+
+                # Undo the move on the temporary state
+                state[from_r][from_c] = piece
+                state[to_r][to_c] = target_piece
+
+                if not in_check_after_move:
+                    mobility += 1
+
+    validator.board = original_board # Restore validator board reference
+    return mobility
+
+def _evaluate_king_safety(validator, state, king_pos, king_color, flipped):
+    """ Basic King Safety Evaluation """
+    if not king_pos: return -10000 # King captured? Should not happen in eval
+
+    safety_score = 0
+    king_r, king_c = king_pos
+    opponent_color = 'black' if king_color == 'red' else 'red'
+
+    # 1. Pawn Shield Penalty (Simplified: check pawn directly in front)
+    shield_r = king_r - 1 if (king_color == 'red' and not flipped) or (king_color == 'black' and flipped) else king_r + 1
+    if 0 <= shield_r < 10:
+        # Penalize if the pawn in front is missing, less penalty if king is not on center file
+        center_files = [3, 4, 5]
+        penalty_multiplier = 1.5 if king_c in center_files else 1.0
+        pawn_type = '兵' if king_color == 'red' else '卒'
+        if state[shield_r][king_c] is None or state[shield_r][king_c][1] != pawn_type:
+             safety_score -= 30 * penalty_multiplier
+        # Small bonus if pawn is present
+        elif state[shield_r][king_c] and state[shield_r][king_c][1] == pawn_type:
+             safety_score += 5 * penalty_multiplier
+
+
+    # 2. Attacker Count/Proximity (Simplified: check squares around king)
+    attack_zone = []
+    for dr in [-1, 0, 1]:
+        for dc in [-1, 0, 1]:
+             # Also check 2 steps for cannons/rooks/horses potential
+            for dist in [1, 2]:
+                nr, nc = king_r + dr * dist, king_c + dc * dist
+                if 0 <= nr < 10 and 0 <= nc < 9:
+                    if (nr, nc) not in attack_zone:
+                        attack_zone.append((nr, nc))
+    if king_pos not in attack_zone: attack_zone.append(king_pos) # Include king's square
+
+    num_attackers = 0
+    attacker_value_sum = 0
+
+    original_board = validator.board
+    validator.board = state
+    for r in range(10):
+        for c in range(9):
+            piece = state[r][c]
+            if piece and piece[0] == opponent_color[0].upper():
+                # Check if this opponent piece attacks any square in the king's zone
+                for zone_r, zone_c in attack_zone:
+                    if validator.is_valid_move((r, c), (zone_r, zone_c)):
+                        num_attackers += 1
+                        attacker_value_sum += PIECE_VALUES[piece[1]] // 10 # Scaled value
+                        break # Count each attacker only once
+
+    validator.board = original_board
+
+    # Penalties based on attackers
+    if num_attackers == 1:
+        safety_score -= attacker_value_sum // 2
+    elif num_attackers >= 2:
+        safety_score -= attacker_value_sum # Heavier penalty for multiple attackers
+
+    # 3. Check Penalty (already handled separately, but could add slight extra here)
+    # if validator.is_in_check(king_color):
+    #    safety_score -= 50 # Small additional penalty if needed
+
+    return safety_score
+
+def _evaluate_structure(state, flipped):
+    """ Evaluate structural bonuses/penalties """
+    red_structure_score = 0
+    black_structure_score = 0
+
+    # Connected Advisors/Elephants Bonus
+    # Check standard defensive positions
+    # Need to handle flipped board!
+
+    # Define standard positions (relative to baseline)
+    advisor_pos = [(0,3), (0,5), (1,4), (2,3), (2,5)] # Black baseline relative
+    elephant_pos = [(0,2), (0,6), (2,0), (2,4), (2,8), (4,2), (4,6)] # Black baseline relative
+
+    def check_connected(color_char, piece_char, standard_pos):
+        score = 0
+        positions = []
+        # Find all pieces of this type/color
+        for r in range(10):
+            for c in range(9):
+                piece = state[r][c]
+                if piece and piece[0] == color_char and piece[1] == piece_char:
+                    positions.append((r, c))
+
+        if len(positions) == 2:
+            p1_r, p1_c = positions[0]
+            p2_r, p2_c = positions[1]
+
+            # Convert to baseline relative coords for comparison
+            is_red = color_char == 'R'
+            if is_red:
+                rel_p1_r, rel_p1_c = (9-p1_r, p1_c) if not flipped else (p1_r, 8-p1_c)
+                rel_p2_r, rel_p2_c = (9-p2_r, p2_c) if not flipped else (p2_r, 8-p2_c)
+            else: # Black
+                rel_p1_r, rel_p1_c = (p1_r, p1_c) if not flipped else (9-p1_r, 8-p1_c)
+                rel_p2_r, rel_p2_c = (p2_r, p2_c) if not flipped else (9-p2_r, 8-p2_c)
+
+            # Check if they occupy standard connected positions
+            pos1_valid = (rel_p1_r, rel_p1_c) in standard_pos
+            pos2_valid = (rel_p2_r, rel_p2_c) in standard_pos
+
+            if pos1_valid and pos2_valid:
+                # Check for connection (specific to advisors/elephants)
+                if piece_char in ['仕', '士']: # Advisors connect through center
+                     if (rel_p1_r, rel_p1_c) == (1,4) or (rel_p2_r, rel_p2_c) == (1,4):
+                         score += 15 # Bonus if one is central
+                     else: score += 10
+                elif piece_char in ['相', '象']: # Elephants "connect" if they defend each other's blocking points
+                    # Simplified: just give bonus if both are on valid squares
+                    score += 10
+
+        return score
+
+    red_structure_score += check_connected('R', '仕', advisor_pos)
+    red_structure_score += check_connected('R', '相', elephant_pos)
+    black_structure_score += check_connected('B', '士', advisor_pos)
+    black_structure_score += check_connected('B', '象', elephant_pos)
+
+    return red_structure_score, black_structure_score
+
+
+# --- Need the supporting classes (ChessValidator, MCTSNode) as in your original file ---
+# Make sure ChessValidator is defined correctly and handles flipped state properly in its methods.
 
 class ChessValidator:
     """A lightweight class for chess move validation without GUI components"""
     def __init__(self, board, flipped=False):
-        self.game_over = False  # Add this line
-        self.board = board
+        self.game_over = False
+        self.board = board # Use the passed board directly
         self.flipped = flipped
 
-    # Copy all the validation methods from ChineseChess class, but remove any GUI dependencies
-    
+    # ... [ COPY ALL VALIDATION METHODS from your original file here ] ...
+    # find_kings, is_position_under_attack, is_generals_facing, is_in_check,
+    # is_checkmate, is_valid_move, is_valid_general_move, is_valid_advisor_move,
+    # is_valid_elephant_move, is_valid_horse_move, is_valid_chariot_move,
+    # is_valid_cannon_move, is_valid_pawn_move
+
+    # --- PASTE ChessValidator methods here ---
     def find_kings(self):
         """Find positions of both kings/generals"""
         red_king_pos = black_king_pos = None
@@ -38,97 +391,95 @@ class ChessValidator:
 
     def is_position_under_attack(self, pos, attacking_color):
         """Check if a position is under attack by pieces of the given color"""
-        
         # Check from all positions on the board
         for row in range(10):
             for col in range(9):
                 piece = self.board[row][col]
                 if piece and piece[0] == attacking_color[0].upper():
                     # Check if this piece can move to the target position
+                    # Need a temporary validator instance with the correct board state if is_valid_move modifies self.board
+                    # Assuming is_valid_move is read-only w.r.t self.board state
                     if self.is_valid_move((row, col), pos):
                         return True
-        return False  
+        return False
 
     def is_generals_facing(self):
         """Check if the two generals are facing each other directly"""
         red_king_pos, black_king_pos = self.find_kings()
-        
-        # If either king is missing, return False
+
         if not red_king_pos or not black_king_pos:
             return False
-            
+
         red_row, red_col = red_king_pos
         black_row, black_col = black_king_pos
-        
-        # Check if generals are in the same column
+
         if red_col != black_col:
             return False
-            
-        # Check if there are any pieces between the generals
+
         start_row = min(red_row, black_row) + 1
         end_row = max(red_row, black_row)
-        
+
         for row in range(start_row, end_row):
-            if self.board[row][red_col]:  # If there's any piece between
+            if self.board[row][red_col]:
                 return False
-                
-        # If we get here, the generals are facing each other
+
         return True
 
-    
     def is_in_check(self, color):
         """Check if the king of the given color is in check"""
         red_king_pos, black_king_pos = self.find_kings()
-        
-        if not red_king_pos or not black_king_pos:
-            return False
-        
-        # First check the special case of facing generals
-        if self.is_generals_facing():
-            return True  # Both kings are in check in this case
-        
-        # Then check the normal cases of being under attack
+
+        # Handle case where a king might be missing during evaluation of hypothetical states
+        if color == 'red' and not red_king_pos: return False
+        if color == 'black' and not black_king_pos: return False
+        if not red_king_pos or not black_king_pos: return False # If either is missing, but we're checking the present one
+
+        # Check facing generals first ONLY if both kings are present
+        if red_king_pos and black_king_pos and self.is_generals_facing():
+            return True
+
+        # Check normal attacks
         if color == 'red':
             return self.is_position_under_attack(red_king_pos, 'black')
-        else:
+        else: # color == 'black'
             return self.is_position_under_attack(black_king_pos, 'red')
-    
+
     def is_checkmate(self, color):
         """
         Check if the given color is in checkmate.
-        Returns True if the player has no legal moves to escape check.
+        Returns True if the player is in check and has no legal moves.
         """
-        
-        
-        # Try every possible move for every piece of the current player
+        # Must be in check to be checkmated
+        if not self.is_in_check(color):
+            return False
+
+        # Check if any move escapes check
         for row in range(10):
             for col in range(9):
                 piece = self.board[row][col]
-                if piece and piece[0] == color[0].upper():  # If it's current player's piece
-                    # Try all possible destinations
+                if piece and piece[0] == color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self.is_valid_move((row, col), (to_row, to_col)):
-                                # Try the move
-                                original_piece = self.board[to_row][to_col]
+                            from_pos = (row, col)
+                            to_pos = (to_row, to_col)
+                            if self.is_valid_move(from_pos, to_pos):
+                                # Simulate the move
+                                original_piece_at_to = self.board[to_row][to_col]
                                 self.board[to_row][to_col] = piece
                                 self.board[row][col] = None
-                                
+
                                 # Check if still in check
                                 still_in_check = self.is_in_check(color)
-                                
+
                                 # Undo the move
                                 self.board[row][col] = piece
-                                self.board[to_row][to_col] = original_piece
-                                
-                                # If any move gets out of check, not checkmate
-                                if not still_in_check:
-                                    return False
-        
-        # If no legal moves found, it's checkmate
-            
-        self.game_over = True  # Add this line
+                                self.board[to_row][to_col] = original_piece_at_to
 
+                                if not still_in_check:
+                                    return False # Found a legal move
+
+        # If no legal move escapes check, it's checkmate
+        self.game_over = True # Set game over flag
         return True
 
 
@@ -136,259 +487,244 @@ class ChessValidator:
         from_row, from_col = from_pos
         to_row, to_col = to_pos
         piece = self.board[from_row][from_col]
-        
+
+        if not piece: # Added check if piece exists
+            return False
+
         # Basic validation
         if not (0 <= to_row < 10 and 0 <= to_col < 9):
             return False
-            
+
         # Can't capture own pieces
-        if self.board[to_row][to_col] and self.board[to_row][to_col][0] == piece[0]:
+        target_piece = self.board[to_row][to_col]
+        if target_piece and target_piece[0] == piece[0]:
             return False
-        
-        # Get piece type (second character of the piece string)
+
+        # Get piece type
         piece_type = piece[1]
-        
+
         # Check specific piece movement rules
-        if piece_type == '帥' or piece_type == '將':  # General/King
+        if piece_type in ['帥', '將']:
             return self.is_valid_general_move(from_pos, to_pos)
-        elif piece_type == '仕' or piece_type == '士':  # Advisor
+        elif piece_type in ['仕', '士']:
             return self.is_valid_advisor_move(from_pos, to_pos)
-        elif piece_type == '相' or piece_type == '象':  # Elephant
+        elif piece_type in ['相', '象']:
             return self.is_valid_elephant_move(from_pos, to_pos)
-        elif piece_type == '馬':  # Horse
+        elif piece_type == '馬':
             return self.is_valid_horse_move(from_pos, to_pos)
-        elif piece_type == '車':  # Chariot
+        elif piece_type == '車':
             return self.is_valid_chariot_move(from_pos, to_pos)
-        elif piece_type == '炮':  # Cannon
+        elif piece_type == '炮':
             return self.is_valid_cannon_move(from_pos, to_pos)
-        elif piece_type == '兵' or piece_type == '卒':  # Pawn
+        elif piece_type in ['兵', '卒']:
             return self.is_valid_pawn_move(from_pos, to_pos)
-        
+
         return False
 
     def is_valid_general_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
         piece = self.board[from_row][from_col]
-        
-        # Check if move is within palace (3x3 grid)
-        if piece[0] == 'R':  # Red general
-            if not self.flipped:
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-            else:
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-        else:  # Black general
-            if not self.flipped:
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-            else:
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-        
-        # Can only move one step horizontally or vertically
+
+        # Palace check based on flipped status
+        is_red = piece[0] == 'R'
+        in_palace = False
+        if not self.flipped:
+            if is_red and (7 <= to_row <= 9 and 3 <= to_col <= 5): in_palace = True
+            if not is_red and (0 <= to_row <= 2 and 3 <= to_col <= 5): in_palace = True
+        else: # Flipped
+            if is_red and (0 <= to_row <= 2 and 3 <= to_col <= 5): in_palace = True
+            if not is_red and (7 <= to_row <= 9 and 3 <= to_col <= 5): in_palace = True
+
+        if not in_palace:
+            return False
+
+        # Check move distance
         if abs(to_row - from_row) + abs(to_col - from_col) != 1:
             return False
+
+        # Check facing generals rule
+        # Temporarily make the move to check if generals face AFTER the move
+        target_piece = self.board[to_row][to_col]
+        self.board[to_row][to_col] = piece
+        self.board[from_row][from_col] = None
+        generals_face = self.is_generals_facing()
+        # Undo move
+        self.board[from_row][from_col] = piece
+        self.board[to_row][to_col] = target_piece
+
+        if generals_face:
+             return False # Cannot move into a position where generals face
+
         return True
 
     def is_valid_advisor_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
         piece = self.board[from_row][from_col]
-        
-        # Check if move is within palace
-        if piece[0] == 'R':  # Red advisor
-            if not self.flipped:
-                    
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-            else:
-                    
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-        else:  # Black advisor
-            if not self.flipped:
-                    
-                if not (0 <= to_row <= 2 and 3 <= to_col <= 5):
-                    return False
-            else:
-                    
-                if not (7 <= to_row <= 9 and 3 <= to_col <= 5):
-                    return False
-        
+
+        # Palace check based on flipped status
+        is_red = piece[0] == 'R'
+        in_palace = False
+        if not self.flipped:
+            if is_red and (7 <= to_row <= 9 and 3 <= to_col <= 5): in_palace = True
+            if not is_red and (0 <= to_row <= 2 and 3 <= to_col <= 5): in_palace = True
+        else: # Flipped
+            if is_red and (0 <= to_row <= 2 and 3 <= to_col <= 5): in_palace = True
+            if not is_red and (7 <= to_row <= 9 and 3 <= to_col <= 5): in_palace = True
+
+        if not in_palace:
+            return False
+
         # Must move exactly one step diagonally
         if abs(to_row - from_row) != 1 or abs(to_col - from_col) != 1:
             return False
-            
+
         return True
 
     def is_valid_elephant_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
         piece = self.board[from_row][from_col]
-        
-        # Cannot cross river
-        if piece[0] == 'R':  # Red elephant
-            if not self.flipped:
-                    
-                if to_row < 5:  # Cannot cross river
-                    return False
-            else:
-                    
-                if to_row > 4:  # Cannot cross river
-                    return False
-        else:  # Black elephant
-            if not self.flipped:
-                    
-                if to_row > 4:  # Cannot cross river
-                    return False
-            else:
-                    
-                if to_row < 5:  # Cannot cross river
-                    return False
-        
+
+        # River crossing check based on flipped status
+        is_red = piece[0] == 'R'
+        crossed_river = False
+        if not self.flipped:
+            if is_red and to_row < 5: crossed_river = True
+            if not is_red and to_row > 4: crossed_river = True
+        else: # Flipped
+            if is_red and to_row > 4: crossed_river = True
+            if not is_red and to_row < 5: crossed_river = True
+
+        if crossed_river:
+            return False
+
         # Must move exactly two steps diagonally
         if abs(to_row - from_row) != 2 or abs(to_col - from_col) != 2:
             return False
-        
-        # Check if there's a piece blocking the elephant's path
+
+        # Check blocking piece ("elephant eye")
         blocking_row = (from_row + to_row) // 2
         blocking_col = (from_col + to_col) // 2
         if self.board[blocking_row][blocking_col]:
             return False
-            
+
         return True
 
     def is_valid_horse_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
-        
-        # Must move in an L-shape (2 steps in one direction, 1 step in perpendicular direction)
+
         row_diff = abs(to_row - from_row)
         col_diff = abs(to_col - from_col)
         if not ((row_diff == 2 and col_diff == 1) or (row_diff == 1 and col_diff == 2)):
             return False
-        
-        # Check for blocking piece
+
+        # Check blocking piece ("horse leg")
         if row_diff == 2:
             blocking_row = from_row + (1 if to_row > from_row else -1)
             if self.board[blocking_row][from_col]:
                 return False
-        else:
+        else: # col_diff == 2
             blocking_col = from_col + (1 if to_col > from_col else -1)
             if self.board[from_row][blocking_col]:
                 return False
-                
+
         return True
 
     def is_valid_chariot_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
-        
-        # Must move horizontally or vertically
+
         if from_row != to_row and from_col != to_col:
             return False
-        
-        # Check if path is clear
-        if from_row == to_row:  # Horizontal move
+
+        # Check path clear
+        if from_row == to_row: # Horizontal
             start_col = min(from_col, to_col) + 1
             end_col = max(from_col, to_col)
             for col in range(start_col, end_col):
                 if self.board[from_row][col]:
                     return False
-        else:  # Vertical move
+        else: # Vertical
             start_row = min(from_row, to_row) + 1
             end_row = max(from_row, to_row)
             for row in range(start_row, end_row):
                 if self.board[row][from_col]:
                     return False
-                    
+
         return True
 
     def is_valid_cannon_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
-        
-        # Must move horizontally or vertically
+
         if from_row != to_row and from_col != to_col:
             return False
-        
-        # Count pieces between from and to positions
+
+        # Count pieces between
         pieces_between = 0
-        if from_row == to_row:  # Horizontal move
+        if from_row == to_row: # Horizontal
             start_col = min(from_col, to_col) + 1
             end_col = max(from_col, to_col)
             for col in range(start_col, end_col):
                 if self.board[from_row][col]:
                     pieces_between += 1
-        else:  # Vertical move
+        else: # Vertical
             start_row = min(from_row, to_row) + 1
             end_row = max(from_row, to_row)
             for row in range(start_row, end_row):
                 if self.board[row][from_col]:
                     pieces_between += 1
-        
-        # If capturing, need exactly one piece between
+
+        # If capturing, need exactly one piece (screen)
         if self.board[to_row][to_col]:
             return pieces_between == 1
-        # If not capturing, path must be clear
-        return pieces_between == 0
+        # If moving without capturing, path must be clear
+        else:
+            return pieces_between == 0
 
     def is_valid_pawn_move(self, from_pos, to_pos):
         from_row, from_col = from_pos
         to_row, to_col = to_pos
         piece = self.board[from_row][from_col]
-        
-        if piece[0] == 'R':  # Red pawn
+        is_red = piece[0] == 'R'
 
-            if not self.flipped:
-
-                # Before crossing river
-                if from_row > 4:
-                    # Can only move forward (up)
+        if not self.flipped:
+            # Red moves up (decreasing row index)
+            if is_red:
+                if from_row > 4: # Before river
                     return to_col == from_col and to_row == from_row - 1
-                # After crossing river
-                else:
-                    # Can move forward or sideways
+                else: # After river
                     return (to_col == from_col and to_row == from_row - 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+            # Black moves down (increasing row index)
             else:
-                # Before crossing river
-                if from_row < 5:
-                    # Can only move forward (down)
+                if from_row < 5: # Before river
                     return to_col == from_col and to_row == from_row + 1
-                # After crossing river
-                else:
-                    # Can move forward or sideways
+                else: # After river
                     return (to_col == from_col and to_row == from_row + 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
-        else:  # Black pawn
-            if not self.flipped:
-
-                # Before crossing river
-                if from_row < 5:
-                    # Can only move forward (down)
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+        else: # Flipped board
+            # Red moves down (increasing row index)
+            if is_red:
+                if from_row < 5: # Before river (relative to flipped board)
                     return to_col == from_col and to_row == from_row + 1
-                
-                # After crossing river
-                else:
-                    # Can move forward or sideways
+                else: # After river
                     return (to_col == from_col and to_row == from_row + 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+            # Black moves up (decreasing row index)
             else:
-                # Before crossing river
-                if from_row > 4:
-                    # Can only move forward (up)
+                if from_row > 4: # Before river (relative to flipped board)
                     return to_col == from_col and to_row == from_row - 1
-                # After crossing river
-                else:
-                    # Can move forward or sideways
+                else: # After river
                     return (to_col == from_col and to_row == from_row - 1) or \
-                        (to_row == from_row and abs(to_col - from_col) == 1)
+                           (to_row == from_row and abs(to_col - from_col) == 1)
+
 
 class MCTSNode:
-    
+    # Make sure it correctly initializes the validator with the flipped status
     def __init__(self, state, parent=None, move=None, color='black', flipped=False):
         self.state = state      # The state is already a copy when passed to MCTSNode
         self.parent = parent
@@ -397,69 +733,51 @@ class MCTSNode:
         self.children = []
         self.wins = 0
         self.visits = 0
-        # Create validator with the state directly, no need to copy again
-        self.validator = ChessValidator(self.state, flipped)
+        # Create validator with the state directly, ensuring flipped status is passed
+        self.validator = ChessValidator(self.state, flipped) # Pass flipped status
         self.untried_moves = self._get_valid_moves(color)
-        
-        # Store root reference for AI color comparison
+
+        # Store root reference for AI color comparison and flipped status access
         self.root = self if parent is None else parent.root
 
-    
-    
+    # Ensure _get_valid_moves uses self.validator correctly
     def _get_valid_moves(self, color=None):
-        """Get all valid moves for the specified color (or current color if not specified)"""
         moves = []
-        color = color if color else self.color
-        
+        current_color = color if color else self.color
+        # Make sure validator uses the node's state
+        original_board = self.validator.board
+        self.validator.board = self.state
+
         for row in range(10):
             for col in range(9):
                 piece = self.state[row][col]
-                if piece and piece[0] == color[0].upper():
+                if piece and piece[0] == current_color[0].upper():
                     for to_row in range(10):
                         for to_col in range(9):
-                            if self._is_valid_move((row, col), (to_row, to_col)):
-                                # Test if move would result in check
-                                test_state = copy.deepcopy(self.state)
-                                test_state[to_row][to_col] = test_state[row][col]
-                                test_state[row][col] = None
-                                self.validator.board = test_state
-                                if not self.validator.is_in_check(color):
-                                    moves.append(((row, col), (to_row, to_col)))
-                                self.validator.board = self.state
+                            from_pos = (row, col)
+                            to_pos = (to_row, to_col)
+                            if self.validator.is_valid_move(from_pos, to_pos):
+                                # Test if move would result in check for the moving player
+                                original_piece_at_to = self.state[to_row][to_col]
+                                self.state[to_row][to_col] = piece
+                                self.state[row][col] = None
+
+                                # Use the validator (already pointing to self.state)
+                                still_in_check = self.validator.is_in_check(current_color)
+
+                                # Undo move on the state
+                                self.state[row][col] = piece
+                                self.state[to_row][to_col] = original_piece_at_to
+
+                                if not still_in_check:
+                                    moves.append((from_pos, to_pos))
+
+        # Restore validator's original board if necessary (though it might not matter if validator is recreated often)
+        # self.validator.board = original_board # Probably not needed if validator state isn't reused across nodes directly
+
         return moves
-    
-    def _is_valid_move(self, from_pos, to_pos):
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.state[from_row][from_col]
-        
-        if not piece:
-            return False
-            
-        if not (0 <= to_row < 10 and 0 <= to_col < 9):
-            return False
-            
-        if self.state[to_row][to_col] and self.state[to_row][to_col][0] == piece[0]:
-            return False
 
-        piece_type = piece[1]
-        if piece_type in ['帥', '將']:
-            return self.validator.is_valid_general_move(from_pos, to_pos)
-        elif piece_type in ['仕', '士']:
-            return self.validator.is_valid_advisor_move(from_pos, to_pos)
-        elif piece_type in ['相', '象']:
-            return self.validator.is_valid_elephant_move(from_pos, to_pos)
-        elif piece_type == '馬':
-            return self.validator.is_valid_horse_move(from_pos, to_pos)
-        elif piece_type == '車':
-            return self.validator.is_valid_chariot_move(from_pos, to_pos)
-        elif piece_type == '炮':
-            return self.validator.is_valid_cannon_move(from_pos, to_pos)
-        elif piece_type in ['兵', '卒']:
-            return self.validator.is_valid_pawn_move(from_pos, to_pos)
-        return False
-
-
+    # UCT Value calculation might need access to flipped status if heuristics depend on it.
     def uct_value(self, exploration_constant, k=0.1):
         """Calculate UCT value with a distance-based heuristic for AI moves."""
         if self.visits == 0:
@@ -467,14 +785,19 @@ class MCTSNode:
         # Standard UCT formula
         uct = (self.wins / self.visits) + exploration_constant * math.sqrt(math.log(self.parent.visits) / self.visits)
         # Apply heuristic only for AI's moves
-        if self.parent.color == self.root.color and self.move:  # AI's move
-            # Temporarily set validator to parent's state
+        if self.parent and self.parent.color == self.root.color and self.move:  # Check parent exists
+            # Temporarily set validator to parent's state to find king pos before the move
             original_board = self.validator.board
-            self.validator.board = self.parent.state
-            # Find opponent's king position (index 1 for red, 0 for black)
+            self.validator.board = self.parent.state # Use parent state for king pos before move
+            self.validator.flipped = self.root.validator.flipped # Ensure flipped status is correct
+
+            # Find opponent's king position
             opponent_king_idx = 1 if self.root.color == 'red' else 0
-            opponent_king_pos = self.validator.find_kings()[opponent_king_idx]
-            self.validator.board = original_board
+            kings = self.validator.find_kings()
+            opponent_king_pos = kings[opponent_king_idx] if len(kings) > opponent_king_idx else None
+
+            self.validator.board = original_board # Restore validator board
+
             if opponent_king_pos:
                 from_pos, to_pos = self.move
                 dist_from = abs(from_pos[0] - opponent_king_pos[0]) + abs(from_pos[1] - opponent_king_pos[1])
@@ -483,7 +806,11 @@ class MCTSNode:
                 uct += k * (-delta_dist)  # Bonus for moving closer, penalty for moving away
         return uct
 
+
+# --- Main Evaluation Function ---
+
 class MCTS:
+
     def __init__(self, state, color, time_limit=1.0, exploration_constant=1.41, flipped=False, max_mate_depth=2):
         self.root = MCTSNode(copy.deepcopy(state), color=color, flipped=flipped)
         self.time_limit = time_limit
@@ -491,7 +818,8 @@ class MCTS:
         self.max_mate_depth = max_mate_depth
 
         self.untried_moves = self.root._get_valid_moves(color)  # Moves not yet expanded
-        
+
+        # Ensure validator uses the flipped status from the root
         self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
         self.forced_sequence = None  # To store the checkmate sequence
 
@@ -540,7 +868,6 @@ class MCTS:
                     else:
                         validator.board[current_pos[0]][current_pos[1]] = original_at_current
         return 3  # Distance > 2
-
 
     def select_node(self):
         """Select a node to expand using UCT"""
@@ -660,7 +987,6 @@ class MCTS:
             node.wins += result
             node = node.parent
 
-
     def find_mate_in_n(self, board, color, n, start_time, time_limit):
         """Find a sequence of moves that forces checkmate in n moves or fewer."""
         # start_time is now a required parameter
@@ -758,7 +1084,6 @@ class MCTS:
                         if count >= 3:  # Stop at 3 as per requirement
                             return count
         return count
-
 
     def get_best_move(self):
         """Select the best move, prioritizing checkmate sequences."""
@@ -865,67 +1190,114 @@ class MCTS:
             return None
         return max(self.root.children, key=lambda n: n.visits).move
 
-    def _evaluate_position(self, state, color):
-        """Enhanced position evaluation with strategic considerations"""
-        piece_values = {
-            '將': 10000, '帥': 10000,
-            '車': 900,
-            '馬': 400,
-            '炮': 500,
-            '象': 200, '相': 200,
-            '士': 200, '仕': 200,
-            '卒': 100, '兵': 100
-        }
-        
-        score = 0
-        opponent_color = 'black' if color == 'red' else 'red'
-        validator = ChessValidator(state, self.root.validator.flipped)
-        
-        # Count available moves for both sides
-        own_moves = 0
-        opponent_moves = 0
-        
-        for row in range(10):
-            for col in range(9):
-                piece = state[row][col]
+    def _evaluate_position(self, state, ai_color):
+        """
+        Sophisticated position evaluation function for Xiangqi.
+        Evaluates material, piece positions (PST), mobility, king safety, and structure.
+        Returns score from the perspective of ai_color (positive is good for ai_color).
+        """
+        total_score = 0
+        opponent_color = 'black' if ai_color == 'red' else 'red'
+        board_flipped = self.root.validator.flipped # Use flipped status from the root node
+
+        # Use a temporary validator for this specific state evaluation
+        validator = ChessValidator(state, board_flipped)
+
+        # --- Pre-computation ---
+        game_phase = _determine_game_phase(state)
+        red_king_pos, black_king_pos = validator.find_kings()
+        king_pos = {'red': red_king_pos, 'black': black_king_pos}
+
+        # --- Initialize Score Components ---
+        material_score = 0
+        pst_score = 0
+        mobility_score = 0
+        king_safety_score = 0
+        structure_score = 0
+
+        # --- Iterate through board ---
+        for r in range(10):
+            for c in range(9):
+                piece = state[r][c]
                 if piece:
-                    # Base piece value
-                    value = piece_values[piece[1]]
-                    multiplier = 1.0
-                    
-                    # Position-based bonuses
-                    if piece[1] in ['車', '馬', '炮']:
-                        # Bonus for controlling center
-                        if 2 <= col <= 6 and 3 <= row <= 6:
-                            multiplier += 0.2
-                    
-                    # Mobility bonus
-                    valid_moves = 0
-                    for to_row in range(10):
-                        for to_col in range(9):
-                            if validator.is_valid_move((row, col), (to_row, to_col)):
-                                valid_moves += 1
-                    
-                    if piece[0] == color[0].upper():
-                        score += value * multiplier
-                        own_moves += valid_moves
+                    piece_color_char = piece[0] # 'R' or 'B'
+                    piece_type = piece[1]       # '車', '馬', etc.
+                    piece_val = PIECE_VALUES[piece_type]
+                    current_piece_color = 'red' if piece_color_char == 'R' else 'black'
+
+                    # 1. Material Score
+                    base_material = piece_val
+                    # Pawn bonus for crossing river (value depends on phase)
+                    pawn_bonus = PAWN_ACROSS_RIVER_BONUS_MG + (PAWN_ACROSS_RIVER_BONUS_EG - PAWN_ACROSS_RIVER_BONUS_MG) * game_phase
+                    river_crossed = False
+                    if piece_type in ['兵', '卒']:
+                        if piece_color_char == 'R':
+                             river_crossed = (r < 5) if not board_flipped else (r > 4)
+                        else: # Black pawn
+                             river_crossed = (r > 4) if not board_flipped else (r < 5)
+                        if river_crossed:
+                            base_material += pawn_bonus
+
+                    if current_piece_color == ai_color:
+                        material_score += base_material
                     else:
-                        score -= value * multiplier
-                        opponent_moves += valid_moves
-        
-        # Mobility advantage
-        score += (own_moves - opponent_moves) * 10
-        
-        # Check and checkmate evaluation
+                        material_score -= base_material
+
+                    # 2. Piece-Square Table Score
+                    pst_val = get_pst_score(piece_type, current_piece_color, r, c, board_flipped)
+                    if current_piece_color == ai_color:
+                        pst_score += pst_val
+                    else:
+                        pst_score -= pst_val
+
+                    # 3. Mobility Score (Calculated per piece)
+                    # Note: This is the most expensive part.
+                    piece_mobility = _get_piece_mobility(validator, state, (r, c), current_piece_color)
+                    # Simple mobility: count moves
+                    # Could add weighting here (e.g., bonus for moves attacking valuable pieces)
+                    if current_piece_color == ai_color:
+                        mobility_score += piece_mobility
+                    else:
+                        mobility_score -= piece_mobility
+
+
+        # 4. King Safety Score (Calculated per king)
+        ai_king_safety = _evaluate_king_safety(validator, state, king_pos[ai_color], ai_color, board_flipped)
+        opponent_king_safety = _evaluate_king_safety(validator, state, king_pos[opponent_color], opponent_color, board_flipped)
+        king_safety_score = ai_king_safety - opponent_king_safety # Positive means AI king safer
+
+        # 5. Structure Score
+        red_struct, black_struct = _evaluate_structure(state, board_flipped)
+        if ai_color == 'red':
+            structure_score = red_struct - black_struct
+        else:
+            structure_score = black_struct - red_struct
+
+
+        # --- Combine Scores with Weights ---
+        total_score = (
+            material_score * MATERIAL_WEIGHT +
+            pst_score * PST_WEIGHT +
+            mobility_score * MOBILITY_WEIGHT +
+            king_safety_score * KING_SAFETY_WEIGHT +
+            structure_score * CONNECTED_DEFENDERS_WEIGHT # Example using this weight
+        )
+
+        # --- Check/Checkmate Overrides (Crucial) ---
+        # Use the temporary validator
         if validator.is_in_check(opponent_color):
-            score += 500  # Bonus for putting opponent in check
             if validator.is_checkmate(opponent_color):
-                score += 50000  # Very high bonus for checkmate
-        
-        if validator.is_in_check(color):
-            score -= 400  # Penalty for being in check
-        
-        return score
+                return 50000  # AI wins (adjust value as needed, must be > max material diff)
+            total_score += 200 # Bonus for check (tunable)
+
+        if validator.is_in_check(ai_color):
+            # Checkmate check for AI is usually handled by move generation,
+            # but double check just in case state is invalid or we missed something
+            if validator.is_checkmate(ai_color):
+                 return -50000 # AI loses
+            total_score -= 200 # Penalty for being in check (tunable)
+
+        return int(total_score) # Return integer score
 
 
 class ChineseChess:
