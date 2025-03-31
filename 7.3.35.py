@@ -9,6 +9,10 @@ import random
 import copy
 import time
 
+import multiprocessing # Added
+from multiprocessing import Pool, cpu_count # Added
+
+
 # new position evaluation function
 
 
@@ -357,6 +361,7 @@ def _evaluate_structure(state, flipped):
     black_structure_score += check_connected('B', '象', elephant_pos)
 
     return red_structure_score, black_structure_score
+
 
 
 # --- Need the supporting classes (ChessValidator, MCTSNode) as in your original file ---
@@ -722,6 +727,182 @@ class ChessValidator:
                     return (to_col == from_col and to_row == from_row - 1) or \
                            (to_row == from_row and abs(to_col - from_col) == 1)
 
+# --- Static Helper Functions for Multiprocessing ---
+
+def _get_valid_moves_static(board, color, flipped):
+    """Static version of _get_valid_moves for use in workers."""
+    moves = []
+    # Requires ChessValidator class to be defined before this function
+    validator = ChessValidator(board, flipped) # Create validator for the given board
+
+    for row in range(10): # Outer loop uses 'row'
+        for col in range(9): # Outer loop uses 'col'
+            piece = board[row][col]
+            if piece and piece[0] == color[0].upper():
+                for to_row in range(10):
+                    for to_col in range(9):
+                        from_pos = (row, col) # Correct: use outer loop vars 'row', 'col'
+                        to_pos = (to_row, to_col)
+                        # Use validator associated with the current board state
+                        if validator.is_valid_move(from_pos, to_pos):
+                            # Test if move would result in check for the moving player
+                            # Need a deep copy to simulate move without affecting other checks
+                            board_copy = [r[:] for r in board] # Deep copy for simulation
+                            sim_validator = ChessValidator(board_copy, flipped) # Validator for the copy
+
+                            original_piece_at_to = sim_validator.board[to_row][to_col]
+                            # --- CORRECTION HERE ---
+                            # Get piece from the correct 'from_pos' using 'row' and 'col'
+                            piece_to_move = sim_validator.board[row][col]
+                            # --- END CORRECTION ---
+
+                            if piece_to_move is None: continue # Safety check
+
+                            sim_validator.board[to_row][to_col] = piece_to_move
+                            sim_validator.board[row][col] = None # Use outer loop vars 'row', 'col'
+
+                            # Check if still in check using the validator for the *modified* board copy
+                            still_in_check = sim_validator.is_in_check(color)
+
+                            # No need to undo the move on the copy
+
+                            if not still_in_check:
+                                moves.append((from_pos, to_pos)) # Use from_pos tuple
+    return moves
+
+# --- Keep the other helper functions (_find_mate_in_n_worker, _worker_task) as provided before ---
+# --- Ensure MCTS.find_mate_in_n is replaced with the version using the Pool ---
+# --- Add the if __name__ == "__main__": guard at the end ---
+
+def _find_mate_in_n_worker(board, color, n, start_time, time_limit, flipped, max_depth_orig):
+    """
+    Core recursive mate finding logic for worker processes.
+    Returns a list representing the first move of the mate sequence, or None.
+    """
+    # Requires ChessValidator class to be defined before this function
+    validator = ChessValidator(board, flipped)
+    opponent_color = 'red' if color == 'black' else 'black'
+
+    # --- Base Cases and Time Check ---
+    if time.time() - start_time > time_limit:
+        raise TimeoutError("Checkmate search timeout in worker")
+    if n < 1:
+        return None
+
+    # --- Get Valid Moves ---
+    # Important: Use deepcopy of board for static move generation to avoid side effects
+    moves = _get_valid_moves_static([r[:] for r in board], color, flipped)
+    if not moves: # Stalemate or already checkmated (shouldn't happen if called correctly)
+        return None
+
+    # --- Check Immediate Checkmate ---
+    checking_moves = []
+    for move in moves:
+        if time.time() - start_time > time_limit: raise TimeoutError("Timeout")
+        # Use deep copy for simulation within the loop
+        new_board = [r[:] for r in board]
+        from_pos, to_pos = move
+        piece = new_board[from_pos[0]][from_pos[1]]
+        # Ensure piece exists before moving
+        if piece is None: continue # Should not happen with valid moves, but safety check
+
+        new_board[to_pos[0]][to_pos[1]] = piece
+        new_board[from_pos[0]][from_pos[1]] = None
+
+        # Create a validator for the new board state
+        temp_validator = ChessValidator(new_board, flipped)
+
+        if temp_validator.is_in_check(opponent_color):
+            checking_moves.append(move)
+            if temp_validator.is_checkmate(opponent_color):
+                # print(f"Worker found mate in 1: {move}")
+                return [move] # Found immediate mate
+
+    # --- Recursive Search (n > 1) ---
+    if n == 1: # Only checked for mate in 1, none found
+        return None
+
+    # Prioritize checking moves
+    priority_moves = checking_moves + [m for m in moves if m not in checking_moves]
+
+    for move in priority_moves:
+        if time.time() - start_time > time_limit: raise TimeoutError("Timeout")
+
+        # Use deep copy for the board resulting from the AI's move
+        new_board = [r[:] for r in board]
+        from_pos, to_pos = move
+        piece = new_board[from_pos[0]][from_pos[1]]
+        if piece is None: continue
+        new_board[to_pos[0]][to_pos[1]] = piece
+        new_board[from_pos[0]][from_pos[1]] = None
+
+        # Use deep copy again for static move generation
+        opponent_moves = _get_valid_moves_static([r[:] for r in new_board], opponent_color, flipped)
+
+        # If opponent has no moves, it's either checkmate (handled above) or stalemate
+        if not opponent_moves:
+            temp_validator_after_move = ChessValidator(new_board, flipped)
+            if not temp_validator_after_move.is_in_check(opponent_color):
+                continue # Stalemate, try next AI move
+            else:
+                # Already checkmate, should have been found earlier.
+                # This indicates the first move 'move' leads to mate.
+                return [move]
+
+
+        all_opponent_responses_lead_to_mate = True
+        for opp_move in opponent_moves:
+            if time.time() - start_time > time_limit: raise TimeoutError("Timeout")
+
+            # Use deep copy for the board resulting from the opponent's move
+            opp_board = [r[:] for r in new_board]
+            opp_from, opp_to = opp_move
+            opp_piece = opp_board[opp_from[0]][opp_from[1]]
+            if opp_piece is None: # Safety check
+                 all_opponent_responses_lead_to_mate = False
+                 print(f"Warning: Opponent piece missing at {opp_from} for move {opp_move}")
+                 break
+            opp_board[opp_to[0]][opp_to[1]] = opp_piece
+            opp_board[opp_from[0]][opp_from[1]] = None
+
+            # Recursive call for the opponent's response
+            # Pass the deep copied board state
+            mate_sequence_recursive = _find_mate_in_n_worker(
+                opp_board, color, n - 1, start_time, time_limit, flipped, max_depth_orig
+            )
+
+            if mate_sequence_recursive is None:
+                all_opponent_responses_lead_to_mate = False
+                break # Found an escape for the opponent
+
+        # If all opponent responses were refuted by a mate in n-1
+        if all_opponent_responses_lead_to_mate:
+            # print(f"Worker found mate in {max_depth_orig - (n-1)} starting with {move}")
+            # Return only the first move of the sequence found at this level
+            return [move]
+
+    # No forced mate found from this position in n moves
+    return None
+
+def _worker_task(args_tuple):
+    """Function executed by each process in the pool."""
+    # Unpack arguments. Use deepcopy for the board received by the worker.
+    board_state, color, n, start_time, time_limit, flipped, max_depth_orig = args_tuple
+    board_copy = [r[:] for r in board_state] # Ensure worker uses a copy
+
+    try:
+        # Call the core recursive logic with the copied board
+        result = _find_mate_in_n_worker(board_copy, color, n, start_time, time_limit, flipped, max_depth_orig)
+        return result is not None # Return True if mate found, False otherwise
+    except TimeoutError:
+        # print("Worker timed out")
+        return False # Treat timeout as failure to find mate in time
+    except Exception as e:
+        print(f"Error in worker process: {e}") # Log other errors
+        import traceback
+        traceback.print_exc()
+        return False
+
 
 class MCTSNode:
     # Make sure it correctly initializes the validator with the flipped status
@@ -987,80 +1168,157 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
+    # Replace the existing find_mate_in_n method in the MCTS class with this:
     def find_mate_in_n(self, board, color, n, start_time, time_limit):
-        """Find a sequence of moves that forces checkmate in n moves or fewer."""
-        # start_time is now a required parameter
-        if time.time() - start_time > time_limit:  # Now start_time will always be a float
-            raise TimeoutError("Checkmate search timeout")
-        
+        """
+        Find a sequence of moves that forces checkmate in n moves or fewer.
+        Uses multiprocessing for n >= 3.
+        Returns the first move of the sequence if found, otherwise None.
+        """
+        # Requires ChessValidator, _get_valid_moves_static, _worker_task to be defined globally
+        validator = ChessValidator(board, self.root.validator.flipped)
         opponent_color = 'red' if color == 'black' else 'black'
+        flipped_status = self.root.validator.flipped # Get flipped status
+
+        # --- Base Cases and Time Check ---
+        if time.time() - start_time > time_limit:
+            raise TimeoutError("Checkmate search timeout")
         if n < 1:
             return None
-        
-        # First check if any move leads to immediate checkmate
-        temp_node = MCTSNode(board, color=color, flipped=self.root.validator.flipped)
-        moves = temp_node._get_valid_moves(color)
-        
-        # Prioritize checking moves first
+
+        # --- Get Valid Moves ---
+        # Use deep copy for static move generation
+        moves = _get_valid_moves_static([r[:] for r in board], color, flipped_status)
+        if not moves:
+            return None # No moves possible
+
+        # --- Check Immediate Checkmate (n=1 case) ---
         checking_moves = []
         for move in moves:
-            if time.time() - start_time > time_limit:
-                raise TimeoutError("Checkmate search timeout")
-                
-            new_board = copy.deepcopy(board)
+            if time.time() - start_time > time_limit: raise TimeoutError("Timeout")
+
+            # Use deep copy for simulation
+            new_board = [r[:] for r in board]
             from_pos, to_pos = move
             piece = new_board[from_pos[0]][from_pos[1]]
+            # Ensure piece exists before moving
+            if piece is None: continue # Should not happen with valid moves, but safety check
+
             new_board[to_pos[0]][to_pos[1]] = piece
             new_board[from_pos[0]][from_pos[1]] = None
-            self.validator.board = new_board
-            
-            # If move gives check, prioritize it
-            if self.validator.is_in_check(opponent_color):
+
+            temp_validator = ChessValidator(new_board, flipped_status)
+
+            # Check if opponent is in check *after* this move
+            if temp_validator.is_in_check(opponent_color):
                 checking_moves.append(move)
-                # If it's checkmate, return immediately
-                if self.validator.is_checkmate(opponent_color):
-                    return [move]
-        
-        # If n=1 and no immediate checkmate found, return None
-        if n == 1:
+                # Check if it's checkmate
+                if temp_validator.is_checkmate(opponent_color):
+                    # print(f"Found mate in 1: {move}")
+                    return [move] # Found immediate mate
+
+        if n == 1: # Only checked for mate in 1, none found
             return None
-        
-        # For deeper searches, prioritize checking moves
+
+        # --- Recursive Search (n > 1) ---
         priority_moves = checking_moves + [m for m in moves if m not in checking_moves]
-        
-        # Only explore deeper if we have checking moves
-        if n > 1 and checking_moves:
-            for move in priority_moves:
-                if time.time() - start_time > time_limit:
-                    raise TimeoutError("Checkmate search timeout")
-                    
-                new_board = copy.deepcopy(board)
-                from_pos, to_pos = move
-                new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
-                new_board[from_pos[0]][from_pos[1]] = None
-                
-                opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
-                opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
-                
-                all_lead_to_mate = True
+
+        for move in priority_moves:
+            if time.time() - start_time > time_limit: raise TimeoutError("Timeout")
+
+            # Use deep copy for the board resulting from AI's move
+            new_board = [r[:] for r in board]
+            from_pos, to_pos = move
+            piece = new_board[from_pos[0]][from_pos[1]]
+            if piece is None: continue
+            new_board[to_pos[0]][to_pos[1]] = piece
+            new_board[from_pos[0]][from_pos[1]] = None
+
+            # Use deep copy for static move generation
+            opponent_moves = _get_valid_moves_static([r[:] for r in new_board], opponent_color, flipped_status)
+
+            # If opponent has no moves, it's checkmate (handled above) or stalemate.
+            if not opponent_moves:
+                 temp_validator_check = ChessValidator(new_board, flipped_status)
+                 if not temp_validator_check.is_in_check(opponent_color):
+                     continue # Move leads to stalemate, not forced mate. Try next AI move.
+                 else:
+                     # Checkmate condition was met by 'move'
+                     return [move]
+
+
+            all_opponent_responses_lead_to_mate = False # Assume opponent can escape
+
+            # --- Parallel vs Sequential Opponent Response Check ---
+            # Use multiprocessing for depth 3+ and multiple responses
+            # Use estimate like > 2 opponent moves to make overhead worthwhile?
+            if n >= 3 and len(opponent_moves) > 1 :
+                num_processes = min(cpu_count(), len(opponent_moves))
+                # Prepare arguments for worker tasks
+                task_args = []
                 for opp_move in opponent_moves:
-                    if time.time() - start_time > time_limit:
-                        raise TimeoutError("Checkmate search timeout")
-                        
-                    opp_board = copy.deepcopy(new_board)
+                    # Use deep copy for the board state passed to the worker
+                    opp_board = [r[:] for r in new_board]
                     opp_from, opp_to = opp_move
-                    opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
+                    opp_piece = opp_board[opp_from[0]][opp_from[1]]
+                    if opp_piece is None: continue # Safety check
+                    opp_board[opp_to[0]][opp_to[1]] = opp_piece
                     opp_board[opp_from[0]][opp_from[1]] = None
-                    
-                    # Pass the same start_time to recursive calls
-                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1, start_time, time_limit)
-                    if mate_sequence is None:
-                        all_lead_to_mate = False
-                        break
-                        
-                if all_lead_to_mate and opponent_moves:
-                    return [move] + mate_sequence
-        
+                    # Pass the copied board state to the task arguments
+                    task_args.append((
+                        opp_board, color, n - 1, start_time, time_limit, flipped_status, self.max_mate_depth
+                    ))
+
+                if not task_args: # If all opponent moves had issues
+                     continue
+
+                try:
+                    # Use context manager for the pool
+                    with Pool(processes=num_processes) as pool:
+                        # Pass the list of argument tuples to map
+                        results = pool.map(_worker_task, task_args)
+                        # print(f"Move {move}, n={n}: Worker results: {results}")
+                        all_opponent_responses_lead_to_mate = all(results)
+                except TimeoutError:
+                     # print(f"Timeout during pool execution for move {move}, n={n}")
+                     all_opponent_responses_lead_to_mate = False # Treat timeout as failure
+                except Exception as e:
+                     print(f"Error during multiprocessing for move {move}, n={n}: {e}")
+                     import traceback
+                     traceback.print_exc()
+                     all_opponent_responses_lead_to_mate = False
+
+            else: # Use sequential check for n=2 or few opponent moves
+                all_opponent_responses_lead_to_mate = True # Assume true initially
+                for opp_move in opponent_moves:
+                    if time.time() - start_time > time_limit: raise TimeoutError("Timeout")
+
+                    # Use deep copy for recursive call board state
+                    opp_board = [r[:] for r in new_board]
+                    opp_from, opp_to = opp_move
+                    opp_piece = opp_board[opp_from[0]][opp_from[1]]
+                    if opp_piece is None: continue
+                    opp_board[opp_to[0]][opp_to[1]] = opp_piece
+                    opp_board[opp_from[0]][opp_from[1]] = None
+
+                    # Recursive call to the *same* find_mate_in_n method
+                    # Pass the deep copied board state
+                    mate_sequence_recursive = self.find_mate_in_n(
+                        opp_board, color, n - 1, start_time, time_limit
+                    )
+
+                    if mate_sequence_recursive is None:
+                        all_opponent_responses_lead_to_mate = False
+                        break # Found an escape for the opponent
+
+            # --- Check Result ---
+            if all_opponent_responses_lead_to_mate:
+                # print(f"Confirmed mate in {self.max_mate_depth - (n-1)} starting with {move}")
+                # This move forces a mate. Return it as the first move of the sequence.
+                return [move]
+
+        # No move found that forces mate in n steps
         return None
 
     def pieces_near_king(self, board, ai_color, validator):
@@ -4191,5 +4449,8 @@ class ChineseChess:
 
 # Create and run the game
 if __name__ == "__main__":
+
+    multiprocessing.freeze_support()
+
     game = ChineseChess()
     game.run()

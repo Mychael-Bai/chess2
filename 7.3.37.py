@@ -816,13 +816,33 @@ class MCTS:
         self.time_limit = time_limit
         self.exploration_constant = exploration_constant
         self.max_mate_depth = max_mate_depth
-
         self.untried_moves = self.root._get_valid_moves(color)  # Moves not yet expanded
 
         # Ensure validator uses the flipped status from the root
         self.validator = ChessValidator(self.root.state, self.root.validator.flipped)
         self.forced_sequence = None  # To store the checkmate sequence
 
+        self.mate_transposition_table = {}
+        # Zobrist initialization
+        self.zobrist_table = {}
+        piece_types = ['R帥', 'R仕', 'R相', 'R馬', 'R車', 'R炮', 'R兵',
+                       'B將', 'B士', 'B象', 'B馬', 'B車', 'B炮', 'B卒']
+        for row in range(10):
+            for col in range(9):
+                for piece in piece_types:
+                    self.zobrist_table[(row, col, piece)] = random.getrandbits(64)
+        self.zobrist_side = {'red': random.getrandbits(64), 'black': random.getrandbits(64)}
+
+
+    def compute_zobrist_hash(self, board, color):
+        h = 0
+        for row in range(10):
+            for col in range(9):
+                piece = board[row][col]
+                if piece:
+                    h ^= self.zobrist_table[(row, col, piece)]
+        h ^= self.zobrist_side[color]
+        return h
 
     def calculate_attack_distance(self, validator, piece, start_pos, king_pos):
         """
@@ -987,81 +1007,127 @@ class MCTS:
             node.wins += result
             node = node.parent
 
+
     def find_mate_in_n(self, board, color, n, start_time, time_limit):
-        """Find a sequence of moves that forces checkmate in n moves or fewer."""
-        # start_time is now a required parameter
-        if time.time() - start_time > time_limit:  # Now start_time will always be a float
+        if time.time() - start_time > time_limit:
             raise TimeoutError("Checkmate search timeout")
+        
+        # Check transposition table
+        h = self.compute_zobrist_hash(board, color)
+        key = (h, n)
+        if key in self.mate_transposition_table:
+            return self.mate_transposition_table[key]
         
         opponent_color = 'red' if color == 'black' else 'black'
         if n < 1:
             return None
         
-        # First check if any move leads to immediate checkmate
         temp_node = MCTSNode(board, color=color, flipped=self.root.validator.flipped)
         moves = temp_node._get_valid_moves(color)
         
-        # Prioritize checking moves first
+        # Prioritize AI moves (existing logic)
         checking_moves = []
+        capturing_moves = []
+        other_moves = []
         for move in moves:
             if time.time() - start_time > time_limit:
                 raise TimeoutError("Checkmate search timeout")
-                
-            new_board = copy.deepcopy(board)
             from_pos, to_pos = move
+            new_board = copy.deepcopy(board)
             piece = new_board[from_pos[0]][from_pos[1]]
             new_board[to_pos[0]][to_pos[1]] = piece
             new_board[from_pos[0]][from_pos[1]] = None
             self.validator.board = new_board
-            
-            # If move gives check, prioritize it
             if self.validator.is_in_check(opponent_color):
                 checking_moves.append(move)
-                # If it's checkmate, return immediately
                 if self.validator.is_checkmate(opponent_color):
+                    self.mate_transposition_table[key] = [move]
                     return [move]
+            elif board[to_pos[0]][to_pos[1]]:
+                capturing_moves.append(move)
+            else:
+                other_moves.append(move)
         
-        # If n=1 and no immediate checkmate found, return None
+        priority_moves = checking_moves + capturing_moves + other_moves
+        
         if n == 1:
+            self.mate_transposition_table[key] = None
             return None
         
-        # For deeper searches, prioritize checking moves
-        priority_moves = checking_moves + [m for m in moves if m not in checking_moves]
-        
-        # Only explore deeper if we have checking moves
-        if n > 1 and checking_moves:
-            for move in priority_moves:
+        for move in priority_moves:
+            if time.time() - start_time > time_limit:
+                raise TimeoutError("Checkmate search timeout")
+            
+            new_board = copy.deepcopy(board)
+            from_pos, to_pos = move
+            new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
+            new_board[from_pos[0]][from_pos[1]] = None
+            
+            # Create opponent node and check if in check
+            opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
+            self.validator.board = new_board
+            in_check = self.validator.is_in_check(opponent_color)
+            
+            # Get prioritized opponent moves
+            opponent_moves = self._get_prioritized_opponent_moves(opp_temp_node, opponent_color, in_check)
+            
+            all_lead_to_mate = True
+            for opp_move in opponent_moves:
                 if time.time() - start_time > time_limit:
                     raise TimeoutError("Checkmate search timeout")
-                    
-                new_board = copy.deepcopy(board)
-                from_pos, to_pos = move
-                new_board[to_pos[0]][to_pos[1]] = new_board[from_pos[0]][from_pos[1]]
-                new_board[from_pos[0]][from_pos[1]] = None
                 
-                opp_temp_node = MCTSNode(new_board, color=opponent_color, flipped=self.root.validator.flipped)
-                opponent_moves = opp_temp_node._get_valid_moves(opponent_color)
+                opp_board = copy.deepcopy(new_board)
+                opp_from, opp_to = opp_move
+                opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
+                opp_board[opp_from[0]][opp_from[1]] = None
                 
-                all_lead_to_mate = True
-                for opp_move in opponent_moves:
-                    if time.time() - start_time > time_limit:
-                        raise TimeoutError("Checkmate search timeout")
-                        
-                    opp_board = copy.deepcopy(new_board)
-                    opp_from, opp_to = opp_move
-                    opp_board[opp_to[0]][opp_to[1]] = opp_board[opp_from[0]][opp_from[1]]
-                    opp_board[opp_from[0]][opp_from[1]] = None
-                    
-                    # Pass the same start_time to recursive calls
-                    mate_sequence = self.find_mate_in_n(opp_board, color, n - 1, start_time, time_limit)
-                    if mate_sequence is None:
-                        all_lead_to_mate = False
-                        break
-                        
-                if all_lead_to_mate and opponent_moves:
-                    return [move] + mate_sequence
+                mate_sequence = self.find_mate_in_n(opp_board, color, n - 1, start_time, time_limit)
+                if mate_sequence is None:
+                    all_lead_to_mate = False
+                    break
+            
+            if all_lead_to_mate and opponent_moves:
+                result = [move] + mate_sequence
+                self.mate_transposition_table[key] = result
+                return result
         
+        self.mate_transposition_table[key] = None
         return None
+
+    def _get_prioritized_opponent_moves(self, node, opponent_color, in_check):
+        """
+        Generate a prioritized list of opponent moves.
+        If in check, prioritize moves that escape check.
+        Otherwise, prioritize capturing and defensive moves.
+        """
+        all_moves = node._get_valid_moves(opponent_color)
+        
+        if in_check:
+            # Prioritize moves that escape check
+            escaping_moves = []
+            for move in all_moves:
+                from_pos, to_pos = move
+                piece = node.state[from_pos[0]][from_pos[1]]
+                # Simulate the move
+                test_board = copy.deepcopy(node.state)
+                test_board[to_pos[0]][to_pos[1]] = piece
+                test_board[from_pos[0]][from_pos[1]] = None
+                self.validator.board = test_board
+                if not self.validator.is_in_check(opponent_color):
+                    escaping_moves.append(move)
+            # Return escaping moves first, followed by others (though typically only escaping moves are legal)
+            return escaping_moves + [m for m in all_moves if m not in escaping_moves]
+        else:
+            # Prioritize capturing moves, then others
+            capturing_moves = []
+            other_moves = []
+            for move in all_moves:
+                from_pos, to_pos = move
+                if node.state[to_pos[0]][to_pos[1]]:  # Capture
+                    capturing_moves.append(move)
+                else:
+                    other_moves.append(move)
+            return capturing_moves + other_moves
 
     def pieces_near_king(self, board, ai_color, validator):
         """
@@ -1089,9 +1155,11 @@ class MCTS:
         """Select the best move, prioritizing checkmate sequences."""
         TOTAL_TIME_LIMIT = 180  # Total time limit of 30 seconds
         CHECK_ESCAPE_TIME_LIMIT = 20  # Maximum time for finding best escape from check
-        CHECKMATE_TIME_LIMIT = 60  # Maximum time for checkmate search
+        CHECKMATE_TIME_LIMIT = 80  # Maximum time for checkmate search
         
         overall_start_time = time.time()
+        
+        self.mate_transposition_table.clear()
         
         # When in check, find best escape move with time limit
         if self.validator.is_in_check(self.root.color):
@@ -1151,6 +1219,7 @@ class MCTS:
 
                 # Check for mate in n if pieces are near opponent's king
                 if self.pieces_near_king(self.root.state, self.root.color, self.validator):
+                    print()
                     for n in range(2, self.max_mate_depth + 1):
                         print(f'Checking for mate in {n}')
                         # Check both local and overall time limits
