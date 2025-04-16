@@ -3,7 +3,7 @@ import spacy
 import re
 
 # Load spaCy's English model (download first with: python -m spacy download en_core_web_sm)
-nlp = spacy.load("en_core_web_lg")
+nlp = spacy.load("en_core_web_md")
 
 nlp.max_length = 5000000  # or higher if needed
 
@@ -30,7 +30,8 @@ print(f"Total words: {total_words}")
 print(f"Unique words (after lemmatization): {unique_count}")
 print()
 
-print('model: large')
+print('model: medium')
+
 if 'nephtys' in unique_lemmas:
     print("The word 'nephtys' is present in the text.")
 else:
