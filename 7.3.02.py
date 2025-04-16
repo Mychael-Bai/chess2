@@ -3,7 +3,7 @@ import spacy
 import re
 
 # Load spaCy's English model (download first with: python -m spacy download en_core_web_sm)
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_lg")
 
 nlp.max_length = 5000000  # or higher if needed
 
@@ -30,12 +30,17 @@ print(f"Total words: {total_words}")
 print(f"Unique words (after lemmatization): {unique_count}")
 print()
 
-if 'mesopotamia' in unique_lemmas:
-    print("The word 'mesopotamia' is present in the text.")
+if 'nephtys' in unique_lemmas:
+    print("The word 'nephtys' is present in the text.")
 else:
-    print("The word 'mesopotamia' is not present in the text.")
+    print("The word 'nephtys' is not present in the text.")
 
 if 'was' in unique_lemmas:
     print("The word 'was' is present in the text.")
 else:
     print("The word 'was' is not present in the text.")
+
+if 'be' in unique_lemmas:
+    print("The word 'be' is present in the text.")
+else:
+    print("The word 'be' is not present in the text.")
