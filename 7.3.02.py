@@ -31,17 +31,17 @@ print(f"Unique words (after lemmatization): {unique_count}")
 print()
 
 print('model: large')
-if 'nephtys' in unique_lemmas:
-    print("The word 'nephtys' is present in the text.")
+if 'years' in unique_lemmas:
+    print("The word 'years' is present in the text.")
 else:
-    print("The word 'nephtys' is not present in the text.")
+    print("The word 'years' is not present in the text.")
+
+if 'year' in unique_lemmas:
+    print("The word 'year' is present in the text.")
+else:
+    print("The word 'year' is not present in the text.")
 
 if 'sanctify' in unique_lemmas:
     print("The word 'sanctify' is present in the text.")
 else:
     print("The word 'sanctify' is not present in the text.")
-
-if 'be' in unique_lemmas:
-    print("The word 'be' is present in the text.")
-else:
-    print("The word 'be' is not present in the text.")
