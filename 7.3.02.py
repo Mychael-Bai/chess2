@@ -2,13 +2,14 @@
 import spacy
 import re
 
+model = "en_core_web_lg"  # Use the large model for better accuracy
 # Load spaCy's English model (download first with: python -m spacy download en_core_web_sm)
-nlp = spacy.load("en_core_web_lg")
+nlp = spacy.load(model)
 
 nlp.max_length = 5000000  # or higher if needed
 
 # Read the text file
-with open("the story of mankind.txt", 'r', encoding='utf-8') as file:
+with open("the story of mankind(the read version).txt", 'r', encoding='utf-8') as file:
     text = file.read().lower()
 
 # Optional: Clean text with regex to remove unwanted characters (keeping letters, numbers, apostrophes)
@@ -30,18 +31,4 @@ print(f"Total words: {total_words}")
 print(f"Unique words (after lemmatization): {unique_count}")
 print()
 
-print('model: large')
-if 'reptilian' in unique_lemmas:
-    print("The word 'reptilian' is present in the text.")
-else:
-    print("The word 'reptilian' is not present in the text.")
-
-if 'year' in unique_lemmas:
-    print("The word 'year' is present in the text.")
-else:
-    print("The word 'year' is not present in the text.")
-
-if 'sanctify' in unique_lemmas:
-    print("The word 'sanctify' is present in the text.")
-else:
-    print("The word 'sanctify' is not present in the text.")
+print(f'model: {model}')
